@@ -2,9 +2,22 @@
 // Run with:  npm run demo      (never run this on a real production database)
 require("dotenv").config();
 const {
-  connectDB, mongoose,
-  User, Supplier, Department, Item, Batch, Movement,
-  hashPassword, ensureAdmin,
+  connectDB,
+  mongoose,
+  User,
+  Supplier,
+  Department,
+  Store,
+  Item,
+  Batch,
+  Movement,
+  PurchaseOrder,
+  AlertConfig,
+  hashPassword,
+  ensureAdmin,
+  seedDepartments,
+  seedStores,
+  seedAlertConfig,
 } = require("./db");
 
 const day = (offset) => new Date(Date.now() + offset * 864e5).toISOString().slice(0, 10);
@@ -17,21 +30,34 @@ const stamp = (offset, hour = 10) => {
 
 (async () => {
   await connectDB();
+  await seedDepartments();
+  await seedStores();
+  await seedAlertConfig();
 
   const itemCount = await Item.countDocuments();
   if (itemCount > 0) {
     console.log("Database already has items — demo data not added.");
+    await mongoose.disconnect();
     process.exit(0);
   }
 
   await ensureAdmin("Redora@123");
   if (!(await User.findOne({ username: "staff" }))) {
-    const staff = new User({ username: "staff", name: "Pharmacy Staff", role: "staff", password_hash: hashPassword("Redora@123") });
+    const staff = new User({
+      username: "staff",
+      name: "Pharmacy Staff",
+      email: "staff@hospital.org",
+      role: "staff",
+      password_hash: hashPassword("Redora@123"),
+    });
     await staff.save();
   }
 
   const deptDocs = await Department.find({}).lean();
   const depts = Object.fromEntries(deptDocs.map((d) => [d.name, d.id]));
+
+  const storeDocs = await Store.find({}).lean();
+  const mainStore = storeDocs.find((s) => s.is_default) || storeDocs[0];
 
   const supMap = {};
   const suppliersData = [
@@ -68,7 +94,18 @@ const stamp = (offset, hour = 10) => {
   const deptCycle = ["Emergency", "ICU", "General Ward", "Operation Theatre", "Pharmacy", "Outpatient (OPD)", "Laboratory"];
   let n = 0;
   for (const [name, code, cat, unit, reorder, sName, loc, exp, batches] of catalog) {
-    const newItem = new Item({ name, code, category: cat, unit, reorder_level: reorder, supplier_id: supMap[sName], storage_location: loc, tracks_expiry: exp });
+    const newItem = new Item({
+      name,
+      code,
+      barcode: `890${100000000 + n * 137}`,
+      category: cat,
+      unit,
+      reorder_level: reorder,
+      supplier_id: supMap[sName],
+      store_id: mainStore.id,
+      storage_location: loc,
+      tracks_expiry: exp,
+    });
     await newItem.save();
     const itemId = newItem.id;
 
@@ -76,40 +113,94 @@ const stamp = (offset, hour = 10) => {
       const [bno, expOff, received, issued, cost] = batches[bi];
       const left = received - issued;
       const newBatch = new Batch({
-        item_id: itemId, batch_no: bno,
+        item_id: itemId,
+        store_id: mainStore.id,
+        batch_no: bno,
         expiry_date: expOff === null ? null : day(expOff),
-        quantity: left, unit_cost: cost,
+        quantity: left,
+        unit_cost: cost,
         received_at: stamp(-60 + bi * 10),
       });
       await newBatch.save();
       const batchId = newBatch.id;
 
       const moveIn = new Movement({
-        item_id: itemId, batch_id: batchId, type: "in", quantity: received,
-        department_id: null, supplier_id: supMap[sName],
-        reference: `PO-${2400 + n}`, notes: null, user_id: 1,
+        item_id: itemId,
+        batch_id: batchId,
+        store_id: mainStore.id,
+        type: "in",
+        quantity: received,
+        department_id: null,
+        supplier_id: supMap[sName],
+        reference: `PO-${2400 + n}`,
+        notes: null,
+        user_id: 1,
         created_at: stamp(-60 + bi * 10),
       });
       await moveIn.save();
 
-      let rest = issued, k = 0;
+      let rest = issued,
+        k = 0;
       while (rest > 0) {
         const q = Math.min(rest, Math.max(1, Math.round(issued / 6)));
         const dept = deptCycle[(n + k) % deptCycle.length];
         const moveOut = new Movement({
-          item_id: itemId, batch_id: batchId, type: "out", quantity: -q,
-          department_id: depts[dept], supplier_id: null,
-          reference: `REQ-${3000 + n * 10 + k}`, notes: null, user_id: 1,
+          item_id: itemId,
+          batch_id: batchId,
+          store_id: mainStore.id,
+          type: "out",
+          quantity: -q,
+          department_id: depts[dept],
+          supplier_id: null,
+          reference: `REQ-${3000 + n * 10 + k}`,
+          notes: null,
+          user_id: 1,
           created_at: stamp(-((k * 2 + n) % 13), 9 + (k % 8)),
         });
         await moveOut.save();
-        rest -= q; k++;
+        rest -= q;
+        k++;
       }
       n++;
     }
   }
 
-  console.log("Demo data added.  Sign in with  admin / Redora@123  or  staff / Redora@123");
+  // Create sample Purchase Orders
+  const samplePO1 = new PurchaseOrder({
+    po_number: `PO-${new Date().getFullYear()}-0001`,
+    supplier_id: supMap["MediCore"],
+    store_id: mainStore.id,
+    status: "ordered",
+    ordered_at: day(-2),
+    items: [
+      { item_id: 1, item_name: "Paracetamol 500 mg", unit: "strips", quantity: 500, unit_cost: 12.5, received_qty: 0 },
+      { item_id: 2, item_name: "Amoxicillin 500 mg", unit: "strips", quantity: 200, unit_cost: 38.0, received_qty: 0 },
+    ],
+    total_amount: 500 * 12.5 + 200 * 38.0,
+    notes: "Urgent monthly replenishment for Central Pharmacy",
+    created_by: 1,
+  });
+  await samplePO1.save();
+
+  const samplePO2 = new PurchaseOrder({
+    po_number: `PO-${new Date().getFullYear()}-0002`,
+    supplier_id: supMap["SteriSafe"],
+    store_id: mainStore.id,
+    status: "received",
+    ordered_at: day(-10),
+    received_at: day(-3),
+    invoice_number: "INV-SS-9921",
+    invoice_date: day(-3),
+    items: [
+      { item_id: 8, item_name: "Surgical Gloves, sterile (size 7.5)", unit: "pairs", quantity: 1000, unit_cost: 14.0, received_qty: 1000 },
+    ],
+    total_amount: 14000,
+    notes: "Direct OT order",
+    created_by: 1,
+  });
+  await samplePO2.save();
+
+  console.log("Demo data added with multi-stores and purchase orders. Sign in with admin / Redora@123 or staff / Redora@123");
   await mongoose.disconnect();
   process.exit(0);
 })();
