@@ -46,30 +46,52 @@ app.use((req, res, next) => {
   next();
 });
 
+/* ---------- static files (served before DB middleware) ---------- */
+app.use(express.static(path.join(__dirname, "public")));
+
 /* ---------- DB init (cached for serverless cold starts) ---------- */
 let _initPromise = null;
-function initOnce() {
+let _dbError = null;
+async function initOnce() {
+  if (_dbError) {
+    // Retry on next request if it previously failed
+    _initPromise = null;
+    _dbError = null;
+  }
   if (!_initPromise) {
     _initPromise = (async () => {
-      await connectDB();
-      await seedDepartments();
-      await seedStores();
-      await seedAlertConfig();
-      await ensureAdmin();
+      try {
+        await connectDB();
+        await seedDepartments();
+        await seedStores();
+        await seedAlertConfig();
+        await ensureAdmin();
+      } catch (err) {
+        _dbError = err;
+        console.error("MongoDB Atlas connection error:", err.message);
+        throw err;
+      }
     })();
   }
   return _initPromise;
 }
-app.use(async (_req, _res, next) => {
+
+// Middleware: ensure DB is connected before API requests
+app.use("/api", async (req, _res, next) => {
+  if (req.path === "/health") return next();
   try {
     await initOnce();
     next();
   } catch (e) {
-    next(e);
+    next(new HttpError(500, `MongoDB connection error: ${e.message}. Please check your MongoDB Atlas password and Network Access whitelist (0.0.0.0/0).`));
   }
 });
 
-app.use(express.static(path.join(__dirname, "public")));
+// Fallback for HTML5 client-side routing
+app.get("*", (req, res, next) => {
+  if (req.path.startsWith("/api")) return next();
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
 
 /* ---------- helpers ---------- */
 class HttpError extends Error {
