@@ -18,6 +18,7 @@ const {
   StockTake,
   AlertConfig,
   WriteOffRequest,
+  Indent,
   hashPassword,
   verifyPassword,
   ensureAdmin,
@@ -211,7 +212,7 @@ async function queryMovements(q, defaultLimit = 200) {
   const filter = {};
   if (q.item_id) filter.item_id = toInt(q.item_id);
   if (q.user_id) filter.user_id = toInt(q.user_id);
-  if (["in", "out", "adjust", "writeoff", "transfer"].includes(q.type)) filter.type = q.type;
+  if (["in", "out", "adjust", "writeoff", "transfer", "return"].includes(q.type)) filter.type = q.type;
   if (q.store_id) filter.store_id = toInt(q.store_id);
   if (q.from && isDate(q.from)) filter.created_at = { ...(filter.created_at || {}), $gte: q.from };
   if (q.to && isDate(q.to)) filter.created_at = { ...(filter.created_at || {}), $lte: q.to + " 23:59:59" };
@@ -505,9 +506,14 @@ app.get(
 
     const pendingPOs = await PurchaseOrder.countDocuments({ status: { $in: ["ordered", "partially_received"] } });
     const pendingWriteoffsCount = await WriteOffRequest.countDocuments({ status: "pending" });
+    const pendingIndentsCount = await Indent.countDocuments({ status: { $in: ["pending", "partially_dispensed"] } });
     const pendingWriteOffs = req.user.role === "admin"
       ? await WriteOffRequest.find({ status: "pending" }).sort({ id: -1 }).limit(10).lean()
       : [];
+    const pendingIndents = await Indent.find({ status: { $in: ["pending", "partially_dispensed"] } })
+      .sort({ priority: -1, id: -1 })
+      .limit(6)
+      .lean();
     const myShiftSummary = req.user.role === "staff"
       ? await getShiftSummary(req.user.id)
       : null;
@@ -521,8 +527,10 @@ app.get(
         expired: expiredFiltered.length,
         pending_pos: pendingPOs,
         pending_writeoffs: pendingWriteoffsCount,
+        pending_indents: pendingIndentsCount,
       },
       pendingWriteOffs,
+      pendingIndents,
       myShiftSummary,
       needsReorder: lowItems.sort((a, b) => a.available_stock - b.available_stock).slice(0, 8),
       expiringSoon,
@@ -614,6 +622,20 @@ app.get(
     const itemId = toInt(req.params.id);
     const item = await getItem(itemId);
     const batches = await Batch.find({ item_id: item.id }).sort({ quantity: 1, expiry_date: 1 }).lean();
+    
+    // Mark next batch according to FEFO (First Expiry First Out)
+    const todayStr = todayDate();
+    const availableBatches = batches.filter((b) => b.quantity > 0 && (!b.expiry_date || b.expiry_date >= todayStr));
+    const sortedFefo = availableBatches.sort((a, b) => {
+      if (!a.expiry_date) return 1;
+      if (!b.expiry_date) return -1;
+      return a.expiry_date.localeCompare(b.expiry_date);
+    });
+    const fefoNextId = sortedFefo.length > 0 ? sortedFefo[0].id : null;
+    batches.forEach((b) => {
+      b.is_fefo_next = b.id === fefoNextId;
+    });
+
     if (req.user.role !== "admin") {
       batches.forEach((b) => {
         b.unit_cost = null;
@@ -829,6 +851,49 @@ app.post(
     }
 
     res.status(201).json({ ok: true });
+  })
+);
+
+/* Stock Return from Department / Ward back to Store */
+app.post(
+  "/api/stock/return",
+  authMiddleware,
+  ha(async (req, res) => {
+    const b = req.body || {};
+    const item = await getItem(toInt(b.item_id));
+    const qty = toInt(b.quantity);
+    if (!(qty > 0)) bad("Return quantity must be greater than 0.");
+    const deptId = toInt(b.department_id);
+    if (!Number.isInteger(deptId) || !(await Department.findOne({ id: deptId }))) {
+      bad("Select the returning hospital department.");
+    }
+    const storeId = toInt(b.store_id) || 1;
+    const batchId = toInt(b.batch_id);
+
+    let batch = null;
+    if (batchId) {
+      batch = await Batch.findOne({ id: batchId });
+    }
+    if (!batch) {
+      batch = await Batch.findOne({ item_id: item.id, store_id: storeId }).sort({ id: -1 });
+    }
+    if (!batch) bad("No existing batch found to return stock into.");
+
+    await Batch.updateOne({ id: batch.id }, { $inc: { quantity: qty } });
+    const movement = new Movement({
+      item_id: item.id,
+      batch_id: batch.id,
+      store_id: storeId,
+      type: "return",
+      quantity: qty,
+      department_id: deptId,
+      reference: str(b.reference, 80) || "WARD-RETURN",
+      notes: str(b.notes, 300) || "Unused medicine returned from ward",
+      user_id: req.user.id,
+    });
+    await movement.save();
+
+    res.status(201).json({ ok: true, message: `Returned ${qty} ${item.unit} to store.` });
   })
 );
 
@@ -1058,6 +1123,170 @@ app.get(
   authMiddleware,
   ha(async (req, res) => {
     res.json(await queryMovements(req.query));
+  })
+);
+
+/* ----- Department Indents / Ward Requisitions ----- */
+app.get(
+  "/api/indents",
+  authMiddleware,
+  ha(async (req, res) => {
+    const filter = {};
+    if (req.query.status) filter.status = req.query.status;
+    if (req.query.department_id) filter.department_id = toInt(req.query.department_id);
+    if (req.query.priority) filter.priority = req.query.priority;
+
+    const indents = await Indent.find(filter).sort({ id: -1 }).limit(100).lean();
+    res.json(indents);
+  })
+);
+
+app.get(
+  "/api/indents/:id",
+  authMiddleware,
+  ha(async (req, res) => {
+    const indent = await Indent.findOne({ id: toInt(req.params.id) }).lean();
+    if (!indent) notFound("Indent not found.");
+    res.json(indent);
+  })
+);
+
+app.post(
+  "/api/indents",
+  authMiddleware,
+  ha(async (req, res) => {
+    const b = req.body || {};
+    const deptId = toInt(b.department_id);
+    const dept = await Department.findOne({ id: deptId });
+    if (!dept) bad("Choose a valid hospital department.");
+    const storeId = toInt(b.store_id) || 1;
+    const store = await Store.findOne({ id: storeId });
+    const rawItems = Array.isArray(b.items) ? b.items : [];
+    if (!rawItems.length) bad("Add at least one item to the indent.");
+
+    const items = [];
+    for (const it of rawItems) {
+      const itemDoc = await Item.findOne({ id: toInt(it.item_id) });
+      if (!itemDoc) bad(`Item ID ${it.item_id} not found.`);
+      const qty = toInt(it.requested_qty);
+      if (!(qty > 0)) bad(`Invalid quantity for ${itemDoc.name}.`);
+      items.push({
+        item_id: itemDoc.id,
+        item_name: itemDoc.name,
+        unit: itemDoc.unit,
+        requested_qty: qty,
+        dispensed_qty: 0,
+      });
+    }
+
+    const count = await Indent.countDocuments();
+    const indentNumber = `IND-${new Date().getFullYear()}-${String(count + 1).padStart(4, "0")}`;
+    const priority = ["routine", "urgent", "stat"].includes(b.priority) ? b.priority : "routine";
+
+    const indentDoc = new Indent({
+      indent_number: indentNumber,
+      department_id: dept.id,
+      department_name: dept.name,
+      store_id: store ? store.id : 1,
+      store_name: store ? store.name : "Main Central Pharmacy",
+      priority,
+      status: "pending",
+      items,
+      requested_by_id: req.user.id,
+      requested_by_name: req.user.name,
+      notes: str(b.notes, 300) || null,
+    });
+    await indentDoc.save();
+
+    res.status(201).json({ id: indentDoc.id, indent_number: indentDoc.indent_number });
+  })
+);
+
+app.post(
+  "/api/indents/:id/dispense",
+  authMiddleware,
+  ha(async (req, res) => {
+    const indent = await Indent.findOne({ id: toInt(req.params.id) });
+    if (!indent) notFound("Indent not found.");
+    if (indent.status === "fulfilled" || indent.status === "cancelled") {
+      bad(`This indent is already ${indent.status}.`);
+    }
+
+    const todayStr = todayDate();
+    let anyDispensed = false;
+    let allFulfilled = true;
+
+    for (const line of indent.items) {
+      const needed = line.requested_qty - (line.dispensed_qty || 0);
+      if (needed <= 0) continue;
+
+      // FEFO (First Expiry First Out) search for valid batches
+      const batches = await Batch.find({
+        item_id: line.item_id,
+        store_id: indent.store_id || 1,
+        quantity: { $gt: 0 },
+        $or: [{ expiry_date: null }, { expiry_date: { $gte: todayStr } }],
+      })
+        .sort({ expiry_date: 1 })
+        .lean();
+
+      let remainingToDispense = needed;
+      for (const b of batches) {
+        if (remainingToDispense <= 0) break;
+        const take = Math.min(b.quantity, remainingToDispense);
+        await Batch.updateOne({ id: b.id }, { $inc: { quantity: -take } });
+
+        const movement = new Movement({
+          item_id: line.item_id,
+          batch_id: b.id,
+          store_id: indent.store_id || 1,
+          type: "out",
+          quantity: -take,
+          department_id: indent.department_id,
+          reference: indent.indent_number,
+          notes: `[Indent ${indent.indent_number} Fulfill - FEFO] ${indent.notes || ""}`,
+          user_id: req.user.id,
+        });
+        await movement.save();
+
+        line.dispensed_qty = (line.dispensed_qty || 0) + take;
+        remainingToDispense -= take;
+        anyDispensed = true;
+      }
+
+      if (line.dispensed_qty < line.requested_qty) {
+        allFulfilled = false;
+      }
+    }
+
+    if (!anyDispensed) {
+      bad("No available non-expired stock on hand to dispense for this indent.");
+    }
+
+    indent.status = allFulfilled ? "fulfilled" : "partially_dispensed";
+    indent.dispensed_by_id = req.user.id;
+    indent.dispensed_by_name = req.user.name;
+    indent.dispensed_at = new Date().toISOString().replace("T", " ").slice(0, 19);
+    await indent.save();
+
+    res.json({
+      ok: true,
+      status: indent.status,
+      message: allFulfilled ? "Indent completely fulfilled via FEFO!" : "Indent partially fulfilled (some items out of stock).",
+    });
+  })
+);
+
+app.post(
+  "/api/indents/:id/cancel",
+  authMiddleware,
+  ha(async (req, res) => {
+    const indent = await Indent.findOne({ id: toInt(req.params.id) });
+    if (!indent) notFound("Indent not found.");
+    if (indent.status === "fulfilled") bad("Cannot cancel an already fulfilled indent.");
+    indent.status = "cancelled";
+    await indent.save();
+    res.json({ ok: true });
   })
 );
 

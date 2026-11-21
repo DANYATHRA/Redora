@@ -24,6 +24,8 @@
     barcode: '<svg viewBox="0 0 24 24"><path d="M3 5v14M7 5v14M11 5v14M15 5v14M17 5v14M21 5v14"/></svg>',
     camera: '<svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>',
     print: '<svg viewBox="0 0 24 24"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>',
+    indent: '<svg viewBox="0 0 24 24"><path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/><path d="m9 10 3-3 3 3"/><path d="M12 7v8"/><path d="M8 17h8"/></svg>',
+    returns: '<svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>',
   };
   const LOGO = '<span class="logo"><svg viewBox="0 0 24 24"><path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z" fill="#fff"/></svg></span>';
 
@@ -53,12 +55,30 @@
       adjust: ["adjust", "Adjusted"],
       writeoff: ["writeoff", "Written off"],
       transfer: ["transfer", "Transferred"],
+      return: ["ok", "Ward Returned"],
     }[t] || ["adjust", t];
     return `<span class="badge ${m[0]}">${m[1]}</span>`;
   }
   function poBadge(s) {
     const label = { draft: "Draft", ordered: "Ordered", partially_received: "Partially received", received: "Received", cancelled: "Cancelled" }[s] || s;
     return `<span class="badge ${s}">${label}</span>`;
+  }
+  function indentPriorityBadge(p) {
+    const m = {
+      routine: ["adjust", "Routine"],
+      urgent: ["urgent", "⚡ Urgent"],
+      stat: ["stat", "🚨 STAT Emergency"],
+    }[p] || ["adjust", p];
+    return `<span class="badge ${m[0]}">${m[1]}</span>`;
+  }
+  function indentStatusBadge(s) {
+    const m = {
+      pending: ["soon", "Pending Central Pharmacy"],
+      dispensed: ["ok", "Dispensed (FEFO)"],
+      partially_dispensed: ["low", "Partially Dispensed"],
+      cancelled: ["expired", "Cancelled"],
+    }[s] || ["adjust", s];
+    return `<span class="badge ${m[0]}">${m[1]}</span>`;
   }
 
   async function api(path, opts = {}) {
@@ -432,6 +452,7 @@
     const isAdmin = u.role === "admin";
     const links = [
       ["dashboard", "Dashboard", "dashboard"],
+      ["indents", "Ward indents", "indent"],
       ["items", "Items & stock", "items"],
       ["stock-in", "Receive stock", "in"],
       ["stock-out", "Issue stock", "out"],
@@ -459,15 +480,15 @@
         <div class="brand">${LOGO}Redora</div>
         ${roleBanner}
         <div class="nav-heading">Main Operations</div>
-        <nav class="nav" aria-label="Main">${links.slice(0, 4)
+        <nav class="nav" aria-label="Main">${links.slice(0, 5)
           .map(([h, label, icon]) => `<a href="#/${h}" data-nav="${h}">${ICONS[icon]}<span>${label}</span></a>`)
           .join("")}</nav>
         <div class="nav-heading">${isAdmin ? "Management & Audit" : "Store Movements"}</div>
-        <nav class="nav" aria-label="Operations">${links.slice(4, isAdmin ? 8 : 7)
+        <nav class="nav" aria-label="Operations">${links.slice(5, isAdmin ? 9 : 8)
           .map(([h, label, icon]) => `<a href="#/${h}" data-nav="${h}">${ICONS[icon]}<span>${label}</span></a>`)
           .join("")}</nav>
         <div class="nav-heading">System</div>
-        <nav class="nav" aria-label="System">${links.slice(isAdmin ? 8 : 7)
+        <nav class="nav" aria-label="System">${links.slice(isAdmin ? 9 : 8)
           .map(([h, label, icon]) => `<a href="#/${h}" data-nav="${h}">${ICONS[icon]}<span>${label}</span></a>`)
           .join("")}</nav>
         <div class="userbox"><strong>${esc(u.name)}</strong>
@@ -494,6 +515,7 @@
   /* ================= router ================= */
   const ROUTES = {
     dashboard: viewDashboard,
+    indents: (arg, p) => (arg ? viewIndentDetail(Number(arg)) : viewIndents(p)),
     items: (arg, p) => (arg ? viewItem(Number(arg)) : viewItems(p)),
     "stock-in": (_a, p) => viewStockIn(p),
     "stock-out": (_a, p) => viewStockOut(p),
@@ -665,14 +687,44 @@
         </section>`
       : "";
 
+    const indentsBanner = d.pendingIndents && d.pendingIndents.length
+      ? `<section class="indent-panel">
+          <div class="panel-head" style="background:#fff1f2;border-bottom:1px solid #fecdd3">
+            <h2 style="color:#991b1b;display:flex;align-items:center;gap:8px">
+              <span>🚨</span> Ward Indents Queue (${d.pendingIndents.length} Pending Central Pharmacy)
+            </h2>
+            <div style="display:flex;gap:8px;align-items:center">
+              <span class="small muted">First Expiry First Out (FEFO) Protocol</span>
+              <button class="btn sm ghost" data-action="new-indent">+ Raise Ward Indent</button>
+              <a href="#/indents" class="btn sm ghost">View Queue</a>
+            </div>
+          </div>
+          <div class="table-wrap"><table><thead><tr><th>Indent #</th><th>Ward / Dept</th><th>Priority</th><th>Items Requested</th><th>Requested By</th><th class="right">Action</th></tr></thead><tbody>${d.pendingIndents
+            .map((ind) => `<tr>
+              <td><strong><a class="link" href="#/indents/${ind.id}">${esc(ind.indent_number)}</a></strong></td>
+              <td><strong>${esc(ind.department_name)}</strong></td>
+              <td>${indentPriorityBadge(ind.priority)}</td>
+              <td>${ind.items.map(it => `<div>${esc(it.item_name)}: <strong>${it.requested_qty}</strong> <span class="muted small">${esc(it.unit || "")}</span></div>`).join("")}</td>
+              <td class="small">${esc(ind.requested_by_name)}<span class="sub">${fmtTime(ind.requested_at)}</span></td>
+              <td class="right" style="white-space:nowrap">
+                <button class="btn sm" data-action="dispense-indent" data-id="${ind.id}">⚡ Dispense via FEFO</button>
+                <a href="#/indents/${ind.id}" class="btn sm ghost">View Slip</a>
+              </td>
+            </tr>`)
+            .join("")}</tbody></table></div>
+        </section>`
+      : "";
+
     return `${pageHead("Dashboard", `Hospital inventory overview · ${isAdmin ? "Administrator Clearance" : "Pharmacy Staff Dispensing Mode"}`,
-      '<button class="btn ghost" data-action="open-barcode-scan">' + ICONS.barcode + ' Scan item</button><a class="btn" href="#/stock-in">Receive stock</a><a class="btn ghost" href="#/stock-out">Issue stock</a>')}
+      '<button class="btn ghost" data-action="open-barcode-scan">' + ICONS.barcode + ' Scan item</button><button class="btn" data-action="new-indent">+ Raise Ward Indent</button><a class="btn ghost" href="#/stock-in">Receive stock</a><a class="btn ghost" href="#/stock-out">Issue stock</a>')}
       ${emptyDbBanner}
       ${approvalsBanner}
       ${shiftCard}
+      ${indentsBanner}
       ${alertBanner}
-      <div class="stats">
+      <div class="stats" style="grid-template-columns: repeat(7, 1fr)">
         ${stat(t.items, "Active items", "#/items", "s-ok")}
+        ${stat(t.pending_indents || 0, "Ward Indents", "#/indents", "s-stat")}
         ${stat(t.low, "Low stock", "#/items?status=low", "s-low")}
         ${stat(t.out, "Out of stock", "#/items?status=out", "s-out")}
         ${stat(t.expiring, "Expiring soon", "#/items?status=expiring", "s-low")}
@@ -772,7 +824,7 @@
     const batchRows = batches.length
       ? `<div class="table-wrap"><table><thead><tr><th>Batch</th><th>Store</th><th>Expiry</th><th class="right">In stock</th>${isAdmin ? '<th class="right">Unit cost</th>' : ""}<th>Received</th><th></th></tr></thead><tbody>${batches
           .map(
-            (b) => `<tr><td><strong>${esc(b.batch_no)}</strong></td><td>Store #${b.store_id || 1}</td><td>${item.tracks_expiry ? expiryBadge(b.expiry_date) : "—"}</td><td class="right num"><strong>${b.quantity}</strong> <span class="muted small">${esc(item.unit)}</span></td>
+            (b) => `<tr><td><strong>${esc(b.batch_no)}</strong>${b.is_fefo_next ? ' <span class="badge fefo" title="First Expiry First Out - Dispense this batch next">★ FEFO: Next to Issue</span>' : ""}</td><td>Store #${b.store_id || 1}</td><td>${item.tracks_expiry ? expiryBadge(b.expiry_date) : "—"}</td><td class="right num"><strong>${b.quantity}</strong> <span class="muted small">${esc(item.unit)}</span></td>
             ${isAdmin ? `<td class="right num">${b.unit_cost != null ? fmtMoney(b.unit_cost) : "—"}</td>` : ""}
             <td class="small muted">${fmtTime(b.received_at)}</td>
             <td class="right" style="white-space:nowrap">${b.quantity > 0 ? `<button class="btn sm danger" data-action="writeoff" data-batch="${b.id}" data-batchno="${esc(b.batch_no)}" data-qty="${b.quantity}">${isAdmin ? "Write off" : "Request write-off"}</button>` : ""}
@@ -950,7 +1002,7 @@
         reload();
       });
     });
-    return `${pageHead("Issue stock", "Dispense medicine or supplies to a hospital ward or clinic", `<button class="btn ghost" data-action="open-barcode-scan">${ICONS.barcode} Scan item barcode</button>`)}
+    return `${pageHead("Issue stock", "Dispense medicine or supplies to a hospital ward or clinic", `<button class="btn ghost" data-action="return-stock">↩ Return from Ward</button><button class="btn ghost" data-action="open-barcode-scan">${ICONS.barcode} Scan item barcode</button>`)}
       <div class="cols2" style="align-items:start">
         <section class="panel"><div class="panel-body"><form id="out-form" novalidate><div class="form-error" role="alert"></div>
           <div class="grid2">
@@ -964,6 +1016,254 @@
           <label class="field">Notes <span class="hint">(optional)</span><input type="text" name="notes" maxlength="300"></label>
           <button class="btn" type="submit">Issue stock</button></form></div></section>
         <section class="panel"><div class="panel-head"><h2>Recently issued</h2></div>${movementTable(recent)}</section>
+      </div>`;
+  }
+
+  /* ================= ward stock return ================= */
+  async function openStockReturnModal(items, depts, stores) {
+    if (!items || !depts || !stores) {
+      [items, depts, stores] = await Promise.all([api("/items"), api("/departments"), api("/stores")]);
+    }
+    const html = `<label class="field">Medicine / Item<select name="item_id" required>
+        ${options(items, "id", (i) => `${i.name}${i.code ? ` (${i.code})` : ""}`, "", "Select returned item…")}
+      </select></label>
+      <div class="grid2">
+        <label class="field">Returning Department / Ward<select name="department_id" required>
+          ${options(depts, "id", (d) => d.name, "", "Select ward…")}
+        </select></label>
+        <label class="field">Return to Store<select name="store_id" required>
+          ${options(stores, "id", (s) => s.name, 1)}
+        </select></label>
+      </div>
+      <div class="grid2">
+        <label class="field">Batch No<input type="text" name="batch_no" maxlength="40" placeholder="e.g. BATCH-01" required></label>
+        <label class="field">Quantity Returned<input type="number" name="quantity" min="1" step="1" required></label>
+      </div>
+      <label class="field">Expiry Date (if new/unrecorded batch)<input type="date" name="expiry_date"></label>
+      <label class="field">Reason for Return<select name="notes" required>
+        <option value="Unopened - Patient discharged">Unopened - Patient discharged</option>
+        <option value="Procedure cancelled / rescheduled">Procedure cancelled / rescheduled</option>
+        <option value="Excess ward indent returned">Excess ward indent returned</option>
+        <option value="Incorrect ward requisition returned">Incorrect ward requisition returned</option>
+        <option value="Other ward return">Other ward return</option>
+      </select></label>`;
+
+    openModal("Ward Stock Return (Put back into store)", html, async (data) => {
+      await api("/stock/return", { method: "POST", body: data });
+      toast("Stock successfully returned to store inventory.");
+      reload();
+    }, "Confirm Ward Return");
+  }
+
+  /* ================= ward indents & FEFO dispensing ================= */
+  async function openNewIndentModal(depts, stores, items) {
+    if (!depts || !stores || !items) {
+      [depts, stores, items] = await Promise.all([api("/departments"), api("/stores"), api("/items")]);
+    }
+    const itemOptions = items.map((i) => `<option value="${i.id}">${esc(i.name)} (${esc(i.unit)}) — Avail: ${i.available_stock}</option>`).join("");
+    const body = `
+      <div class="grid2">
+        <label class="field">Requesting Ward / Clinic<select name="department_id" required>
+          ${options(depts, "id", (d) => d.name, "", "Select requesting ward…")}
+        </select></label>
+        <label class="field">Fulfilling Store<select name="store_id">${options(stores, "id", (s) => s.name, 1)}</select></label>
+      </div>
+      <label class="field">Priority / Urgency<select name="priority" required>
+        <option value="routine">Routine Ward Restock (Standard shift replenishment)</option>
+        <option value="urgent">⚡ Urgent (Required within 2 hours)</option>
+        <option value="stat">🚨 STAT Emergency (Immediate bedside requirement)</option>
+      </select></label>
+      <div class="panel-head" style="padding:10px 0 6px"><h3>Requested Medicines & Items</h3><button type="button" class="btn sm ghost" id="indent-add-row">+ Add Item</button></div>
+      <div id="indent-rows" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
+        <div class="grid2 indent-item-row" style="grid-template-columns: 2fr 1fr">
+          <select class="indent-item-sel" required><option value="">Select item…</option>${itemOptions}</select>
+          <input type="number" class="indent-item-qty" placeholder="Quantity" min="1" required>
+        </div>
+      </div>
+      <label class="field">Clinical Indication / Notes <span class="hint">(optional)</span><textarea name="notes" placeholder="e.g. Bed #14 emergency procedure, OT list..." maxlength="300"></textarea></label>
+    `;
+    const modal = openModal("Raise Ward Indent / Requisition", body, async (data, form) => {
+      const rows = $$(".indent-item-row", form);
+      const indentItems = [];
+      for (const r of rows) {
+        const itemId = $(".indent-item-sel", r).value;
+        const qty = $(".indent-item-qty", r).value;
+        if (itemId && qty) {
+          indentItems.push({ item_id: Number(itemId), requested_qty: Number(qty) });
+        }
+      }
+      if (!indentItems.length) throw new Error("Add at least one item.");
+      const payload = {
+        department_id: Number(data.department_id),
+        store_id: Number(data.store_id || 1),
+        priority: data.priority,
+        notes: data.notes,
+        items: indentItems,
+      };
+      const res = await api("/indents", { method: "POST", body: payload });
+      toast(`Ward Indent ${res.indent_number} submitted.`);
+      location.hash = `#/indents/${res.id}`;
+    }, "Submit Ward Indent", true);
+
+    $("#indent-add-row", modal).addEventListener("click", () => {
+      const row = document.createElement("div");
+      row.className = "grid2 indent-item-row";
+      row.style.cssText = "grid-template-columns: 2fr 1fr";
+      row.innerHTML = `
+        <select class="indent-item-sel" required><option value="">Select item…</option>${itemOptions}</select>
+        <input type="number" class="indent-item-qty" placeholder="Quantity" min="1" required>
+      `;
+      $("#indent-rows", modal).appendChild(row);
+    });
+  }
+
+  async function viewIndents(params) {
+    document.title = "Ward Indents — Redora";
+    const statusFilter = params.get("status") || "";
+    const priorityFilter = params.get("priority") || "";
+    const [indents, depts] = await Promise.all([
+      api(`/indents?status=${encodeURIComponent(statusFilter)}&priority=${encodeURIComponent(priorityFilter)}`),
+      api("/departments"),
+    ]);
+
+    after(() => {
+      $("#f-ind-status").addEventListener("change", (e) => {
+        params.set("status", e.target.value);
+        location.hash = "#/indents?" + params.toString();
+      });
+      $("#f-ind-priority").addEventListener("change", (e) => {
+        params.set("priority", e.target.value);
+        location.hash = "#/indents?" + params.toString();
+      });
+    });
+
+    const rowsHtml = indents.length
+      ? indents.map((ind) => `<tr>
+          <td><strong><a class="link" href="#/indents/${ind.id}">${esc(ind.indent_number)}</a></strong></td>
+          <td><strong>${esc(ind.department_name)}</strong></td>
+          <td>${indentPriorityBadge(ind.priority)}</td>
+          <td>${ind.items.map(it => `<div>${esc(it.item_name)}: <strong>${it.dispensed_qty || 0} / ${it.requested_qty}</strong> <span class="muted small">${esc(it.unit || "")}</span></div>`).join("")}</td>
+          <td>${indentStatusBadge(ind.status)}</td>
+          <td class="small">${esc(ind.requested_by_name)}<span class="sub">${fmtTime(ind.requested_at)}</span></td>
+          <td class="right" style="white-space:nowrap">
+            ${ind.status === "pending" ? `<button class="btn sm" data-action="dispense-indent" data-id="${ind.id}">⚡ Dispense (FEFO)</button> <button class="btn sm danger" data-action="cancel-indent" data-id="${ind.id}">Cancel</button> ` : ""}
+            <a href="#/indents/${ind.id}" class="btn sm ghost">Dispense Slip</a>
+          </td>
+        </tr>`).join("")
+      : '<tr><td colspan="7" class="empty">No ward indents found.</td></tr>';
+
+    return `${pageHead("Ward Indents & Requisitions", "Central Pharmacy dispatch queue — Wards request medicines & Central Pharmacy dispenses via FEFO",
+      `<button class="btn" data-action="new-indent">+ Raise Ward Indent</button><button class="btn ghost" data-action="return-stock">↩ Return from Ward</button>`)}
+      <section class="panel">
+        <div class="toolbar">
+          <select id="f-ind-status" aria-label="Filter status">
+            <option value=""${statusFilter === "" ? " selected" : ""}>All statuses</option>
+            <option value="pending"${statusFilter === "pending" ? " selected" : ""}>Pending Dispensing</option>
+            <option value="dispensed"${statusFilter === "dispensed" ? " selected" : ""}>Dispensed (FEFO)</option>
+            <option value="cancelled"${statusFilter === "cancelled" ? " selected" : ""}>Cancelled</option>
+          </select>
+          <select id="f-ind-priority" aria-label="Filter priority">
+            <option value=""${priorityFilter === "" ? " selected" : ""}>All priorities</option>
+            <option value="stat"${priorityFilter === "stat" ? " selected" : ""}>🚨 STAT Emergency</option>
+            <option value="urgent"${priorityFilter === "urgent" ? " selected" : ""}>⚡ Urgent</option>
+            <option value="routine"${priorityFilter === "routine" ? " selected" : ""}>Routine Ward Restock</option>
+          </select>
+          <span class="muted small" style="margin-left:auto">${indents.length} indent(s)</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Indent #</th>
+                <th>Ward / Department</th>
+                <th>Priority</th>
+                <th>Items (Dispensed / Req)</th>
+                <th>Status</th>
+                <th>Requested By</th>
+                <th class="right">Action</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+      </section>`;
+  }
+
+  async function viewIndentDetail(id) {
+    const ind = await api("/indents/" + id);
+    document.title = `${ind.indent_number} — Redora`;
+
+    return `<a class="back" href="#/indents">← All ward indents</a>
+      ${pageHead(
+        `Ward Indent ${ind.indent_number}`,
+        `Requisition for ${esc(ind.department_name)} · Status: ${ind.status.toUpperCase()}`,
+        `<button class="btn ghost" data-action="print-slip">${ICONS.print} Print Dispense Slip</button>` +
+        (ind.status === "pending" ? ` <button class="btn" data-action="dispense-indent" data-id="${ind.id}">⚡ Dispense via FEFO</button> <button class="btn danger" data-action="cancel-indent" data-id="${ind.id}">Cancel</button>` : "")
+      )}
+      <div class="indent-slip">
+        <div class="indent-slip-header">
+          <div>
+            <div style="font-size:0.8rem;text-transform:uppercase;color:var(--muted);font-weight:700">Hospital Pharmacy Requisition & Dispense Voucher</div>
+            <div class="indent-slip-title">REDORA CENTRAL PHARMACY</div>
+            <div class="small muted">Dispense Protocol: First Expiry First Out (FEFO) Audited</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:1.25rem;font-weight:800;color:#0f172a">${esc(ind.indent_number)}</div>
+            <div>${indentPriorityBadge(ind.priority)}</div>
+          </div>
+        </div>
+
+        <div class="indent-slip-meta">
+          <div><span>Ward / Department:</span><strong>${esc(ind.department_name)}</strong></div>
+          <div><span>Fulfilling Store:</span><strong>${esc(ind.store_name)}</strong></div>
+          <div><span>Requisition Status:</span><div>${indentStatusBadge(ind.status)}</div></div>
+          <div><span>Requested By:</span><strong>${esc(ind.requested_by_name)}</strong></div>
+          <div><span>Request Time:</span><strong>${fmtTime(ind.requested_at)}</strong></div>
+          <div><span>Clinical Notes:</span><strong>${esc(ind.notes || "None")}</strong></div>
+          ${ind.dispensed_at ? `
+            <div><span>Dispensed By:</span><strong>${esc(ind.dispensed_by_name)}</strong></div>
+            <div><span>Dispensed Time:</span><strong>${fmtTime(ind.dispensed_at)}</strong></div>
+            <div><span>Dispense Method:</span><strong>FEFO Algorithm (Batch Validated)</strong></div>
+          ` : ""}
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Medicine / Item</th>
+                <th class="right">Requested</th>
+                <th class="right">Dispensed</th>
+                <th>Batches Dispensed (FEFO)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${ind.items.map(it => `<tr>
+                <td><strong>${esc(it.item_name)}</strong></td>
+                <td class="right num"><strong>${it.requested_qty}</strong> <span class="muted small">${esc(it.unit || "")}</span></td>
+                <td class="right num" style="color:#16a34a"><strong>${it.dispensed_qty || 0}</strong> <span class="muted small">${esc(it.unit || "")}</span></td>
+                <td>
+                  ${(it.batches_dispensed && it.batches_dispensed.length)
+                    ? it.batches_dispensed.map(b => `<span class="badge in">Batch <strong>${esc(b.batch_no)}</strong>: ${b.quantity} ${esc(it.unit || "")} (Exp: ${fmtDay(b.expiry_date)})</span> `).join("")
+                    : '<span class="muted small">Awaiting pharmacy fulfillment</span>'}
+                </td>
+              </tr>`).join("")}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="slip-signatures">
+          <div class="slip-sign-box">
+            <div class="slip-sign-line"></div>
+            <div class="slip-sign-title">Pharmacist / Dispenser Signature</div>
+            <div class="small muted">${ind.dispensed_by_name ? `Dispensed by: ${esc(ind.dispensed_by_name)}` : "Central Pharmacy Staff"}</div>
+          </div>
+          <div class="slip-sign-box">
+            <div class="slip-sign-line"></div>
+            <div class="slip-sign-title">Receiving Ward Nurse / Doctor Signature</div>
+            <div class="small muted">${esc(ind.department_name)} Staff</div>
+          </div>
+        </div>
       </div>`;
   }
 
@@ -1741,6 +2041,37 @@
       } catch (e) {
         toast(e.message, true);
       }
+    },
+    "new-indent": async () => {
+      const [depts, stores, items] = await Promise.all([api("/departments"), api("/stores"), api("/items")]);
+      openNewIndentModal(depts, stores, items);
+    },
+    "return-stock": async () => {
+      const [items, depts, stores] = await Promise.all([api("/items"), api("/departments"), api("/stores")]);
+      openStockReturnModal(items, depts, stores);
+    },
+    "dispense-indent": async (el) => {
+      if (!confirm("Dispense this indent now? Redora will automatically select and deduct batches according to First-Expiry-First-Out (FEFO).")) return;
+      try {
+        const res = await api(`/indents/${el.dataset.id}/dispense`, { method: "POST" });
+        toast(res.message || "Indent dispensed via FEFO.");
+        reload();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    },
+    "cancel-indent": async (el) => {
+      if (!confirm("Cancel this ward indent?")) return;
+      try {
+        await api(`/indents/${el.dataset.id}/cancel`, { method: "POST" });
+        toast("Ward indent cancelled.");
+        reload();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    },
+    "print-slip": () => {
+      window.print();
     },
   };
 

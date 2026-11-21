@@ -138,7 +138,7 @@ const movementSchema = new mongoose.Schema({
   batch_id: Number,
   store_id: { type: Number, default: 1 },
   to_store_id: Number,
-  type: { type: String, enum: ["in", "out", "adjust", "writeoff", "transfer"], required: true },
+  type: { type: String, enum: ["in", "out", "adjust", "writeoff", "transfer", "return"], required: true },
   quantity: { type: Number, required: true },
   department_id: Number,
   supplier_id: Number,
@@ -270,6 +270,38 @@ writeOffRequestSchema.pre("save", async function (next) {
   next();
 });
 
+/* Ward Indents & Requisitions (Department stock requests) */
+const indentItemSchema = new mongoose.Schema({
+  item_id: { type: Number, required: true },
+  item_name: { type: String, required: true },
+  unit: { type: String, default: "units" },
+  requested_qty: { type: Number, required: true },
+  dispensed_qty: { type: Number, default: 0 },
+});
+
+const indentSchema = new mongoose.Schema({
+  id: { type: Number, unique: true },
+  indent_number: { type: String, required: true, unique: true },
+  department_id: { type: Number, required: true },
+  department_name: String,
+  store_id: { type: Number, default: 1 },
+  store_name: String,
+  priority: { type: String, enum: ["routine", "urgent", "stat"], default: "routine" },
+  status: { type: String, enum: ["pending", "partially_dispensed", "fulfilled", "cancelled"], default: "pending" },
+  items: [indentItemSchema],
+  requested_by_id: Number,
+  requested_by_name: String,
+  requested_at: { type: String, default: () => new Date().toISOString().replace("T", " ").slice(0, 19) },
+  dispensed_by_id: Number,
+  dispensed_by_name: String,
+  dispensed_at: String,
+  notes: String,
+});
+indentSchema.pre("save", async function (next) {
+  if (!this.id) this.id = await nextId("indent");
+  next();
+});
+
 /* Alert Configuration */
 const alertConfigSchema = new mongoose.Schema({
   id: { type: Number, default: 1, unique: true },
@@ -296,6 +328,7 @@ const PasswordReset = mongoose.model("PasswordReset", passwordResetSchema);
 const StockTake = mongoose.model("StockTake", stockTakeSchema);
 const AlertConfig = mongoose.model("AlertConfig", alertConfigSchema);
 const WriteOffRequest = mongoose.model("WriteOffRequest", writeOffRequestSchema);
+const Indent = mongoose.model("Indent", indentSchema);
 
 /* ---------- seeds ---------- */
 async function seedDepartments() {
@@ -497,6 +530,7 @@ module.exports = {
   StockTake,
   AlertConfig,
   WriteOffRequest,
+  Indent,
   hashPassword,
   verifyPassword,
   ensureAdmin,
