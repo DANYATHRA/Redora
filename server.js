@@ -23,6 +23,7 @@ const {
   seedDepartments,
   seedStores,
   seedAlertConfig,
+  seedSampleCatalog,
 } = require("./db");
 
 const PORT = process.env.PORT || 3000;
@@ -66,6 +67,7 @@ async function initOnce() {
         await seedStores();
         await seedAlertConfig();
         await ensureAdmin();
+        await seedSampleCatalog();
       } catch (err) {
         _dbError = err;
         console.error("MongoDB Atlas connection error:", err.message);
@@ -502,9 +504,21 @@ app.get(
       $or: [{ barcode: queryCode }, { code: queryCode }, { name: new RegExp(`^${queryCode}$`, "i") }],
       active: 1,
     }).lean();
-    if (!item) notFound("No matching item found for that code / barcode.");
+    if (!item) {
+      return res.status(404).json({ error: `No item found matching "${queryCode}".`, not_found: true, scanned_code: queryCode });
+    }
     const detail = await getItem(item.id);
     res.json(detail);
+  })
+);
+
+app.post(
+  "/api/demo/seed",
+  authMiddleware,
+  adminOnly,
+  ha(async (_req, res) => {
+    await seedSampleCatalog();
+    res.json({ ok: true, message: "Sample hospital catalog and batches loaded successfully." });
   })
 );
 

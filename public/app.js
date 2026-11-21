@@ -213,9 +213,15 @@
       html5QrCode = new window.Html5Qrcode("scanner-reader");
       modal._scanner = html5QrCode;
       const config = {
-        fps: 15,
-        qrbox: { width: 280, height: 160 },
+        fps: 20,
+        qrbox: (viewfinderWidth, viewfinderHeight) => ({
+          width: Math.floor(viewfinderWidth * 0.94),
+          height: Math.floor(viewfinderHeight * 0.78),
+        }),
         aspectRatio: 1.33,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true,
+        },
         formatsToSupport: [
           Html5QrcodeSupportedFormats.EAN_13,
           Html5QrcodeSupportedFormats.EAN_8,
@@ -530,8 +536,19 @@
             .join("")}</tbody></table></div>`
         : `<div class="empty">${empty}</div>`;
 
+    const emptyDbBanner = t.items === 0
+      ? `<div class="alert-banner" style="background:#fee2e2;border:1px solid #fca5a5;color:var(--brand-dark);margin-bottom:18px">
+          <div>
+            <strong>🏥 Welcome to Redora!</strong> Your hospital inventory is currently empty.
+            <div class="small" style="color:#64748b;margin-top:2px">Load sample hospital medicines, batches & barcodes (including Indian & global pharma codes) to explore immediately.</div>
+          </div>
+          <button class="btn sm" data-action="seed-demo-catalog">+ Load Sample Medicines & Barcodes</button>
+        </div>`
+      : "";
+
     return `${pageHead("Dashboard", `Hospital inventory overview · alerts look ${d.expiryWarnDays} days ahead`,
       '<button class="btn ghost" data-action="open-barcode-scan">' + ICONS.barcode + ' Scan item</button><a class="btn" href="#/stock-in">Receive stock</a><a class="btn ghost" href="#/stock-out">Issue stock</a>')}
+      ${emptyDbBanner}
       ${alertBanner}
       <div class="stats">
         ${stat(t.items, "Active items", "#/items", "s-ok")}
@@ -1451,9 +1468,31 @@
           toast(`Found item: ${item.name}`);
           location.hash = `#/items/${item.id}`;
         } catch (e) {
-          toast(e.message, true);
+          openModal("Unregistered Barcode Scanned", `
+            <div style="text-align:center;padding:12px 0">
+              <span style="font-size:2.8rem">🏷️</span>
+              <p style="font-size:1.15rem;margin:10px 0 4px"><strong>Scanned Code: <code>${esc(code)}</code></strong></p>
+              <p class="muted">No item in your inventory currently has this barcode (${esc(code)}).</p>
+            </div>
+            <p>Would you like to register this medicine in your inventory now?</p>
+          `, () => {
+            openItemModal({ barcode: code, name: "", unit: "units", category: "Medicine", tracks_expiry: 1, reorder_level: 10 });
+          }, "+ Register New Item with this Barcode");
         }
       });
+    },
+    "seed-demo-catalog": async (btn) => {
+      btn.disabled = true;
+      btn.textContent = "Loading medicines…";
+      try {
+        await api("/demo/seed", { method: "POST" });
+        toast("Sample hospital catalog loaded successfully!");
+        reload();
+      } catch (e) {
+        toast(e.message, true);
+        btn.disabled = false;
+        btn.textContent = "+ Load Sample Medicines & Barcodes";
+      }
     },
     "new-item": () => openItemModal(null),
     "edit-item": () => openItemModal(view()._item),

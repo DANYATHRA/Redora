@@ -362,6 +362,97 @@ async function ensureAdmin(passwordOverride) {
   }
 }
 
+/* ---------- seed sample hospital catalog ---------- */
+async function seedSampleCatalog() {
+  const itemCount = await Item.countDocuments();
+  if (itemCount > 0) return;
+
+  const day = (offset) => new Date(Date.now() + offset * 864e5).toISOString().slice(0, 10);
+  const stamp = (offset, hour = 10) => {
+    const d = new Date();
+    d.setUTCHours(hour, 0, 0, 0);
+    d.setUTCDate(d.getUTCDate() + offset);
+    return d.toISOString().replace("T", " ").slice(0, 19);
+  };
+
+  const storeDocs = await Store.find({}).lean();
+  const mainStore = storeDocs.find((s) => s.is_default) || storeDocs[0] || { id: 1 };
+
+  const supMap = {};
+  const suppliersData = [
+    ["MediCore Pharma Distributors", "Anil Kumar", "+91 98400 11122", "orders@medicore.example", "12 Industrial Estate, Coimbatore"],
+    ["SteriSafe Surgical Supplies", "Priya Nair", "+91 98950 33445", "sales@sterisafe.example", "45 Market Road, Kochi"],
+    ["LabLine Diagnostics", "R. Venkatesh", "+91 99620 55667", "support@labline.example", "7 Tech Park, Chennai"],
+    ["CareWear PPE Traders", "Meena Iyer", "+91 97100 77889", "hello@carewear.example", "88 Mill Street, Tiruppur"],
+  ];
+  for (const [name, contact_person, phone, email, address] of suppliersData) {
+    let sup = await Supplier.findOne({ name });
+    if (!sup) {
+      sup = new Supplier({ name, contact_person, phone, email, address });
+      await sup.save();
+    }
+    supMap[name.split(" ")[0]] = sup.id;
+  }
+
+  const catalog = [
+    ["Herbal / Ayurvedic Cough Syrup 100 mL", "MED-007", "Medicine", "bottles", 40, "MediCore", "Pharmacy A-4", 1, [["AYU2401", 365, 100, 20, 156.0]], "8908015919107"],
+    ["Paracetamol 500 mg", "MED-001", "Medicine", "strips", 100, "MediCore", "Pharmacy A-1", 1, [["PCM2401", 420, 400, 150, 12.5], ["PCM2407", 700, 300, 40, 13]], "890100000001"],
+    ["Amoxicillin 500 mg", "MED-002", "Medicine", "strips", 80, "MediCore", "Pharmacy A-2", 1, [["AMX2312", 45, 200, 140, 38]], "890100000002"],
+    ["Insulin Glargine 100 IU/mL", "MED-003", "Medicine", "vials", 30, "MediCore", "Cold room 1", 1, [["INS8821", 120, 90, 75, 540]], "890100000003"],
+    ["Normal Saline 0.9% 500 mL", "FLD-001", "Medicine", "bags", 200, "MediCore", "Store 2", 1, [["NS2406", 300, 600, 330, 28]], "890100000004"],
+    ["Surgical Gloves, sterile (size 7.5)", "SUR-001", "Surgical", "pairs", 300, "SteriSafe", "OT Store", 1, [["GLV3310", 540, 1200, 980, 14]], "890100000005"],
+    ["Disposable Syringe 5 mL", "CON-001", "Consumable", "pcs", 500, "SteriSafe", "Store 1", 1, [["SYR9001", 800, 2000, 1450, 3.2]], "890100000006"],
+    ["N95 Respirator Mask", "PPE-001", "PPE", "pcs", 200, "CareWear", "Store 3", 0, [["DEFAULT", null, 900, 760, 38]], "890100000007"],
+  ];
+
+  let n = 0;
+  for (const [name, code, cat, unit, reorder, sName, loc, exp, batches, bcode] of catalog) {
+    const newItem = new Item({
+      name,
+      code,
+      barcode: bcode || `89010000000${n}`,
+      category: cat,
+      unit,
+      reorder_level: reorder,
+      supplier_id: supMap[sName],
+      store_id: mainStore.id,
+      storage_location: loc,
+      tracks_expiry: exp,
+    });
+    await newItem.save();
+    const itemId = newItem.id;
+
+    for (let bi = 0; bi < batches.length; bi++) {
+      const [bno, expOff, received, issued, cost] = batches[bi];
+      const left = received - issued;
+      const newBatch = new Batch({
+        item_id: itemId,
+        store_id: mainStore.id,
+        batch_no: bno,
+        expiry_date: expOff === null ? null : day(expOff),
+        quantity: left,
+        unit_cost: cost,
+        received_at: stamp(-60 + bi * 10),
+      });
+      await newBatch.save();
+      const batchId = newBatch.id;
+
+      await new Movement({
+        item_id: itemId,
+        batch_id: batchId,
+        store_id: mainStore.id,
+        type: "in",
+        quantity: received,
+        supplier_id: supMap[sName],
+        reference: `PO-${2400 + n}`,
+        user_id: 1,
+        created_at: stamp(-60 + bi * 10),
+      }).save();
+    }
+    n++;
+  }
+}
+
 module.exports = {
   connectDB,
   mongoose,
@@ -384,5 +475,6 @@ module.exports = {
   seedDepartments,
   seedStores,
   seedAlertConfig,
+  seedSampleCatalog,
   nextId,
 };
