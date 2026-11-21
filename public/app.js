@@ -216,22 +216,100 @@
     }
   }
 
-  /* ================= login & shell ================= */
+  /* ================= custom portal login ================= */
   function showLogin() {
-    document.title = "Sign in — Redora";
-    $("#app").innerHTML = `<div class="login-wrap"><form class="login-card" id="login-form" novalidate>
-      <div class="brand">${LOGO}Redora</div>
-      <p class="tag">Hospital inventory management</p>
-      <div class="form-error" role="alert"></div>
-      <label class="field">Username<input type="text" name="username" autocomplete="username" autocapitalize="none" required></label>
-      <label class="field">Password<input type="password" name="password" autocomplete="current-password" required></label>
-      <button class="btn block" type="submit">Sign in</button>
-      <div class="login-extra">
-        <a href="#/forgot-password" class="muted small" data-action="forgot-password">Forgot password?</a>
-        <span class="muted small">v1.2 MongoDB Multi-Store</span>
-      </div></form></div>`;
+    document.title = "Hospital Staff Portal — Redora";
+    $("#app").innerHTML = `
+      <div class="portal-wrap">
+        <div class="portal-container">
+          <!-- Left Hero Section -->
+          <div class="portal-hero">
+            <div>
+              <div class="hero-brand">
+                <span class="hero-cross">
+                  <svg viewBox="0 0 24 24" width="24" height="24"><path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z" fill="#fff"/></svg>
+                </span>
+                Redora
+              </div>
+              <p class="hero-desc">
+                High-security hospital inventory system for tracking medicines, consumables, surgical supplies, and equipment across multi-store branches.
+              </p>
+              <div class="portal-features">
+                <div class="portal-feature-item">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                  <span>Role-based access & permanent audit logging</span>
+                </div>
+                <div class="portal-feature-item">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                  <span>Real-time expiry & low stock safeguards</span>
+                </div>
+                <div class="portal-feature-item">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v18H3zM9 9h6v6H9z"/></svg>
+                  <span>Barcode, QR & multi-store stock transfers</span>
+                </div>
+              </div>
+            </div>
+            <div class="portal-hero-foot">
+              <span class="live-dot"></span>
+              <span>Hospital Database Online · Cloud Connected</span>
+            </div>
+          </div>
+
+          <!-- Right Login Form -->
+          <div class="portal-form-pane">
+            <h2>Sign in to Portal</h2>
+            <p class="subtag">Choose an authorized staff profile or enter your credentials</p>
+
+            <div class="quick-role-selector">
+              <button type="button" class="role-chip active" id="chip-admin" data-role="admin">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                Administrator
+              </button>
+              <button type="button" class="role-chip" id="chip-staff" data-role="staff">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                Pharmacy Staff
+              </button>
+            </div>
+
+            <form id="login-form" novalidate>
+              <div class="form-error" role="alert"></div>
+              <label class="field">Username or Email
+                <input type="text" name="username" id="login-user" value="admin" autocomplete="username" autocapitalize="none" required placeholder="admin or danyathra1507@gmail.com">
+              </label>
+              <label class="field">Password
+                <input type="password" name="password" id="login-pass" value="Redora@123" autocomplete="current-password" required placeholder="••••••••">
+              </label>
+              <button class="btn block" type="submit" style="margin-top:8px">Enter Redora Portal →</button>
+              <div class="login-extra">
+                <a href="#/forgot-password" class="muted small" data-action="forgot-password">Forgot password?</a>
+                <span class="muted small">Redora v1.3</span>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    `;
+
     const form = $("#login-form");
-    $("input", form).focus();
+    const uInput = $("#login-user");
+    const pInput = $("#login-pass");
+    const chipAdmin = $("#chip-admin");
+    const chipStaff = $("#chip-staff");
+
+    chipAdmin.addEventListener("click", () => {
+      chipAdmin.classList.add("active");
+      chipStaff.classList.remove("active");
+      uInput.value = "admin";
+      pInput.value = "Redora@123";
+    });
+
+    chipStaff.addEventListener("click", () => {
+      chipStaff.classList.add("active");
+      chipAdmin.classList.remove("active");
+      uInput.value = "staff";
+      pInput.value = "Redora@123";
+    });
+
     bindForm(form, async (data) => {
       const res = await api("/login", { method: "POST", body: data });
       state.user = res.user;

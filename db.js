@@ -329,18 +329,23 @@ function verifyPassword(password, stored) {
 /* ---------- first admin & staff ---------- */
 async function ensureAdmin(passwordOverride) {
   const defaultPassword = passwordOverride || process.env.ADMIN_PASSWORD || "Redora@123";
-  let admin = await User.findOne({ username: "admin" });
+  let admin = await User.findOne({ $or: [{ username: "admin" }, { email: "danyathra1507@gmail.com" }] });
   if (!admin) {
     admin = new User({
       username: "admin",
       name: "Administrator",
       role: "admin",
-      email: "admin@hospital.org",
+      email: "danyathra1507@gmail.com",
       password_hash: hashPassword(defaultPassword),
       active: 1,
     });
     await admin.save();
     console.log("Created initial admin account -> username: admin, password: " + defaultPassword);
+  } else {
+    // Ensure email is set so user can sign in via email or username
+    if (!admin.email) {
+      await User.updateOne({ id: admin.id }, { email: "danyathra1507@gmail.com" });
+    }
   }
 
   let staff = await User.findOne({ username: "staff" });

@@ -259,14 +259,20 @@ app.post(
   loginLimiter,
   ha(async (req, res) => {
     const { username, password } = req.body || {};
-    const user = await User.findOne({ username: str(username, 60).toLowerCase(), active: 1 });
+    const identifier = str(username, 80).toLowerCase().trim();
+    if (!identifier) return res.status(400).json({ error: "Username or email is required." });
+    
+    const user = await User.findOne({
+      $or: [{ username: identifier }, { email: identifier }],
+      active: 1,
+    });
     if (!user || !verifyPassword(String(password || ""), user.password_hash)) {
-      return res.status(401).json({ error: "Incorrect username or password." });
+      return res.status(401).json({ error: "Incorrect username/email or password." });
     }
     const token = crypto.randomBytes(32).toString("hex");
     await new Session({ token_hash: sha(token), user_id: user.id, expires_at: Date.now() + SESSION_MS }).save();
     res.cookie("redora_sid", token, { httpOnly: true, sameSite: "lax", secure: PROD, maxAge: SESSION_MS });
-    res.json({ user: { id: user.id, username: user.username, name: user.name, role: user.role } });
+    res.json({ user: { id: user.id, username: user.username, name: user.name, role: user.role, email: user.email } });
   })
 );
 
