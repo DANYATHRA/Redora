@@ -118,7 +118,11 @@
   function closeModal() {
     const m = $("#modal");
     if (m) {
-      // Stop any camera stream attached to modal
+      if (m._scanner) {
+        try {
+          m._scanner.stop().then(() => m._scanner.clear()).catch(() => {});
+        } catch {}
+      }
       if (m._stream) m._stream.getTracks().forEach((t) => t.stop());
       m.remove();
     }
@@ -149,28 +153,50 @@
   }
 
   /* ================= barcode & QR scanner ================= */
+  function playBeep() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(880, ctx.currentTime); // 880 Hz beep
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.15);
+    } catch {}
+  }
+
   function openBarcodeScanner(onScanned) {
     const body = `
-      <div class="scanner-box" id="scanner-viewport">
-        <video id="scanner-video" playsinline autoplay muted></video>
-        <div class="scanner-overlay"></div>
-        <div class="scanner-scanline"></div>
-      </div>
-      <label class="field">Or scan / type with handheld barcode scanner
+      <div id="scanner-reader" style="width:100%;max-width:440px;margin:0 auto 16px;border-radius:12px;overflow:hidden;background:#000;min-height:260px"></div>
+      <label class="field">Or scan / type with handheld barcode scanner gun
         <div style="display:flex;gap:8px;margin-top:6px">
           <input type="text" id="manual-barcode-input" placeholder="Point barcode scanner or enter code…" autofocus>
           <button type="button" class="btn" id="manual-barcode-btn">Lookup</button>
         </div>
       </label>
-      <p class="muted small">Supports camera detection on mobile/laptop or standard USB/Bluetooth handheld barcode guns.</p>
+      <p class="muted small">Supports all medicine 1D barcodes (EAN-13, UPC, Code-128) and 2D QR codes via camera or USB scanner gun.</p>
     `;
     const modal = openModal("Scan Barcode or QR Code", body, null, "", false);
-    const video = $("#scanner-video", modal);
     const manualInput = $("#manual-barcode-input", modal);
     const manualBtn = $("#manual-barcode-btn", modal);
 
-    const finishScan = (code) => {
-      if (!code) return;
+    let html5QrCode = null;
+    let isFinished = false;
+
+    const finishScan = async (code) => {
+      if (!code || isFinished) return;
+      isFinished = true;
+      playBeep();
+      if (html5QrCode) {
+        try {
+          await html5QrCode.stop();
+          html5QrCode.clear();
+        } catch {}
+      }
       closeModal();
       onScanned(code.trim());
     };
@@ -183,36 +209,57 @@
       }
     });
 
-    // Attempt camera detection using BarcodeDetector if available
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-        .then((stream) => {
-          modal._stream = stream;
-          video.srcObject = stream;
-          video.play();
-
-          if ("BarcodeDetector" in window) {
-            const detector = new window.BarcodeDetector();
-            const scanInterval = setInterval(async () => {
-              if (!document.getElementById("modal")) {
-                clearInterval(scanInterval);
-                return;
-              }
-              try {
-                const barcodes = await detector.detect(video);
-                if (barcodes.length > 0) {
-                  clearInterval(scanInterval);
-                  finishScan(barcodes[0].rawValue);
-                }
-              } catch {}
-            }, 300);
+    if (window.Html5Qrcode) {
+      html5QrCode = new window.Html5Qrcode("scanner-reader");
+      modal._scanner = html5QrCode;
+      const config = {
+        fps: 15,
+        qrbox: { width: 280, height: 160 },
+        aspectRatio: 1.33,
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.QR_CODE,
+          Html5QrcodeSupportedFormats.DATA_MATRIX,
+        ],
+      };
+      html5QrCode
+        .start(
+          { facingMode: "environment" },
+          config,
+          (decodedText) => {
+            finishScan(decodedText);
+          },
+          () => {
+            /* decoding frame */
           }
-        })
-        .catch(() => {
-          // Camera permission denied or not available; fallback to manual input field
-          const viewport = $("#scanner-viewport");
-          if (viewport) viewport.innerHTML = '<div class="empty" style="padding:20px;color:#fff">Camera inactive. Use barcode gun or type code below.</div>';
+        )
+        .catch((err) => {
+          console.warn("Camera start warning:", err);
+          const reader = $("#scanner-reader");
+          if (reader) {
+            reader.innerHTML = `
+              <div class="empty" style="background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:20px;color:var(--danger);min-height:200px;display:grid;place-items:center">
+                <div>
+                  <strong>Camera permission needed or camera unavailable.</strong><br>
+                  <span class="small" style="color:#64748b;margin-top:6px;display:block">
+                    Allow camera access in your browser or type / scan the code using a barcode gun below.
+                  </span>
+                </div>
+              </div>
+            `;
+          }
         });
+    } else {
+      // Fallback if library not loaded
+      const reader = $("#scanner-reader");
+      if (reader) {
+        reader.innerHTML = '<div class="empty" style="padding:20px;color:#fff">Barcode reader ready. Use barcode gun or type code below.</div>';
+      }
     }
   }
 
