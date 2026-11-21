@@ -17,6 +17,7 @@ const {
   PasswordReset,
   StockTake,
   AlertConfig,
+  WriteOffRequest,
   hashPassword,
   verifyPassword,
   ensureAdmin,
@@ -209,6 +210,7 @@ async function getItem(id, storeId = null) {
 async function queryMovements(q, defaultLimit = 200) {
   const filter = {};
   if (q.item_id) filter.item_id = toInt(q.item_id);
+  if (q.user_id) filter.user_id = toInt(q.user_id);
   if (["in", "out", "adjust", "writeoff", "transfer"].includes(q.type)) filter.type = q.type;
   if (q.store_id) filter.store_id = toInt(q.store_id);
   if (q.from && isDate(q.from)) filter.created_at = { ...(filter.created_at || {}), $gte: q.from };
@@ -358,6 +360,79 @@ app.post(
   })
 );
 
+/* Helper for Staff Shift Handover Summary */
+async function getShiftSummary(userId) {
+  const todayStr = todayDate();
+  const userMovements = await Movement.find({
+    user_id: userId,
+    created_at: { $gte: `${todayStr} 00:00:00` },
+  }).sort({ id: -1 }).lean();
+
+  let inCount = 0, inUnits = 0;
+  let outCount = 0, outUnits = 0;
+  let transferCount = 0, transferUnits = 0;
+
+  for (const m of userMovements) {
+    if (m.type === "in") {
+      inCount++;
+      inUnits += Math.abs(m.quantity);
+    } else if (m.type === "out") {
+      outCount++;
+      outUnits += Math.abs(m.quantity);
+    } else if (m.type === "transfer") {
+      transferCount++;
+      transferUnits += Math.abs(m.quantity);
+    }
+  }
+
+  const myWriteoffRequests = await WriteOffRequest.find({
+    requested_by_id: userId,
+  }).sort({ id: -1 }).limit(5).lean();
+
+  // Populate names for recent movements
+  const recent = [];
+  for (const m of userMovements.slice(0, 8)) {
+    const item = await Item.findOne({ id: m.item_id }).lean();
+    const dept = m.department_id ? await Department.findOne({ id: m.department_id }).lean() : null;
+    recent.push({
+      ...m,
+      item_name: item ? item.name : null,
+      unit: item ? item.unit : "units",
+      department: dept ? dept.name : null,
+    });
+  }
+
+  return {
+    date: todayStr,
+    in_count: inCount,
+    in_units: inUnits,
+    out_count: outCount,
+    out_units: outUnits,
+    transfer_count: transferCount,
+    transfer_units: transferUnits,
+    writeoff_requests: myWriteoffRequests,
+    recent,
+  };
+}
+
+app.get(
+  "/api/me/shift-summary",
+  authMiddleware,
+  ha(async (req, res) => {
+    res.json(await getShiftSummary(req.user.id));
+  })
+);
+
+/* Lightweight user list for filters */
+app.get(
+  "/api/users/list",
+  authMiddleware,
+  ha(async (_req, res) => {
+    const users = await User.find({ active: 1 }).select("id name username role -_id").sort({ name: 1 }).lean();
+    res.json(users);
+  })
+);
+
 /* ----- dashboard ----- */
 app.get(
   "/api/dashboard",
@@ -429,6 +504,13 @@ app.get(
     const activity = Object.values(activityMap);
 
     const pendingPOs = await PurchaseOrder.countDocuments({ status: { $in: ["ordered", "partially_received"] } });
+    const pendingWriteoffsCount = await WriteOffRequest.countDocuments({ status: "pending" });
+    const pendingWriteOffs = req.user.role === "admin"
+      ? await WriteOffRequest.find({ status: "pending" }).sort({ id: -1 }).limit(10).lean()
+      : [];
+    const myShiftSummary = req.user.role === "staff"
+      ? await getShiftSummary(req.user.id)
+      : null;
 
     res.json({
       totals: {
@@ -438,7 +520,10 @@ app.get(
         expiring: expiringBatches.length,
         expired: expiredFiltered.length,
         pending_pos: pendingPOs,
+        pending_writeoffs: pendingWriteoffsCount,
       },
+      pendingWriteOffs,
+      myShiftSummary,
       needsReorder: lowItems.sort((a, b) => a.available_stock - b.available_stock).slice(0, 8),
       expiringSoon,
       expired,
@@ -529,6 +614,11 @@ app.get(
     const itemId = toInt(req.params.id);
     const item = await getItem(itemId);
     const batches = await Batch.find({ item_id: item.id }).sort({ quantity: 1, expiry_date: 1 }).lean();
+    if (req.user.role !== "admin") {
+      batches.forEach((b) => {
+        b.unit_cost = null;
+      });
+    }
     const movements = await queryMovements({ item_id: item.id, limit: 50 });
     const audits = await ItemAudit.find({ item_id: item.id }).sort({ id: -1 }).limit(20).lean();
     res.json({ item, batches, movements, audits });
@@ -813,6 +903,34 @@ app.post(
     const reason = str(b.reason, 200);
     if (!reason) bad("Give a reason (expired, damaged, contaminated…).");
 
+    // Two-step write-off rule: Staff submits a request for admin approval; Admin executes directly
+    if (req.user.role !== "admin") {
+      const item = await Item.findOne({ id: batch.item_id }).lean();
+      const store = await Store.findOne({ id: batch.store_id || 1 }).lean();
+      const reqDoc = new WriteOffRequest({
+        item_id: batch.item_id,
+        item_name: item ? item.name : `Item #${batch.item_id}`,
+        batch_id: batch.id,
+        batch_no: batch.batch_no,
+        store_id: batch.store_id || 1,
+        store_name: store ? store.name : "Main Central Pharmacy",
+        quantity: qty,
+        unit: item ? item.unit : "units",
+        reason,
+        status: "pending",
+        requested_by_id: req.user.id,
+        requested_by_name: req.user.name,
+      });
+      await reqDoc.save();
+      return res.status(201).json({
+        ok: true,
+        status: "pending",
+        requires_approval: true,
+        message: "Write-off request submitted for Administrator review and approval.",
+      });
+    }
+
+    // Administrator: immediate write-off authority
     await Batch.updateOne({ id: batch.id }, { $inc: { quantity: -qty } });
     const movement = new Movement({
       item_id: batch.item_id,
@@ -825,7 +943,83 @@ app.post(
     });
     await movement.save();
 
-    res.status(201).json({ ok: true });
+    res.status(201).json({ ok: true, status: "approved", message: "Stock written off immediately." });
+  })
+);
+
+/* Write-off approval requests */
+app.get(
+  "/api/writeoff-requests",
+  authMiddleware,
+  ha(async (req, res) => {
+    const filter = {};
+    if (req.user.role !== "admin") {
+      filter.requested_by_id = req.user.id;
+    } else if (req.query.status) {
+      filter.status = req.query.status;
+    }
+    const requests = await WriteOffRequest.find(filter).sort({ id: -1 }).limit(100).lean();
+    res.json(requests);
+  })
+);
+
+app.post(
+  "/api/writeoff-requests/:id/approve",
+  authMiddleware,
+  adminOnly,
+  ha(async (req, res) => {
+    const id = toInt(req.params.id);
+    const reqDoc = await WriteOffRequest.findOne({ id });
+    if (!reqDoc) notFound("Write-off request not found.");
+    if (reqDoc.status !== "pending") bad(`This request is already ${reqDoc.status}.`);
+
+    const batch = await Batch.findOne({ id: reqDoc.batch_id });
+    if (!batch) bad("Original batch no longer exists.");
+    if (batch.quantity < reqDoc.quantity) {
+      bad(`Batch only has ${batch.quantity} on hand, but request asks for ${reqDoc.quantity}.`);
+    }
+
+    await Batch.updateOne({ id: batch.id }, { $inc: { quantity: -reqDoc.quantity } });
+    const movement = new Movement({
+      item_id: batch.item_id,
+      batch_id: batch.id,
+      store_id: batch.store_id || 1,
+      type: "writeoff",
+      quantity: -reqDoc.quantity,
+      notes: `[Approved Staff Request by ${reqDoc.requested_by_name}] ${reqDoc.reason}`,
+      user_id: req.user.id,
+    });
+    await movement.save();
+
+    reqDoc.status = "approved";
+    reqDoc.reviewed_by_id = req.user.id;
+    reqDoc.reviewed_by_name = req.user.name;
+    reqDoc.reviewed_at = new Date().toISOString().replace("T", " ").slice(0, 19);
+    reqDoc.review_notes = str(req.body?.notes, 200) || "Approved by Administrator";
+    await reqDoc.save();
+
+    res.json({ ok: true, message: "Write-off request approved and stock deducted." });
+  })
+);
+
+app.post(
+  "/api/writeoff-requests/:id/reject",
+  authMiddleware,
+  adminOnly,
+  ha(async (req, res) => {
+    const id = toInt(req.params.id);
+    const reqDoc = await WriteOffRequest.findOne({ id });
+    if (!reqDoc) notFound("Write-off request not found.");
+    if (reqDoc.status !== "pending") bad(`This request is already ${reqDoc.status}.`);
+
+    reqDoc.status = "rejected";
+    reqDoc.reviewed_by_id = req.user.id;
+    reqDoc.reviewed_by_name = req.user.name;
+    reqDoc.reviewed_at = new Date().toISOString().replace("T", " ").slice(0, 19);
+    reqDoc.review_notes = str(req.body?.notes, 200) || "Rejected by Administrator";
+    await reqDoc.save();
+
+    res.json({ ok: true, message: "Write-off request rejected." });
   })
 );
 
@@ -881,11 +1075,16 @@ app.get(
     for (const po of pos) {
       const sup = await Supplier.findOne({ id: po.supplier_id }).lean();
       const store = await Store.findOne({ id: po.store_id }).lean();
-      result.push({
+      const row = {
         ...po,
         supplier_name: sup ? sup.name : null,
         store_name: store ? store.name : null,
-      });
+      };
+      if (req.user.role !== "admin") {
+        row.total_amount = null;
+        if (row.items) row.items.forEach((it) => { it.unit_cost = null; });
+      }
+      result.push(row);
     }
     res.json(result);
   })
@@ -900,14 +1099,19 @@ app.get(
     const sup = await Supplier.findOne({ id: po.supplier_id }).lean();
     const store = await Store.findOne({ id: po.store_id }).lean();
     const user = await User.findOne({ id: po.created_by }).lean();
-    res.json({
+    const result = {
       ...po,
       supplier_name: sup ? sup.name : null,
       supplier_email: sup ? sup.email : null,
       supplier_phone: sup ? sup.phone : null,
       store_name: store ? store.name : null,
       created_by_name: user ? user.name : null,
-    });
+    };
+    if (req.user.role !== "admin") {
+      result.total_amount = null;
+      if (result.items) result.items.forEach((it) => { it.unit_cost = null; });
+    }
+    res.json(result);
   })
 );
 
@@ -1170,6 +1374,7 @@ app.post(
 app.get(
   "/api/reports/valuation",
   authMiddleware,
+  adminOnly,
   ha(async (req, res) => {
     const storeId = req.query.store_id ? toInt(req.query.store_id) : null;
     const items = await itemsWithStock({ active: 1 }, storeId);

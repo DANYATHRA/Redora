@@ -378,6 +378,136 @@ a.stat:hover { transform: translateY(-2px); border-color: #fca5a5; }
 .toast.err { background: var(--danger); }
 @keyframes pop { from { transform: translateY(8px); opacity: 0; } }
 
+/* ---------- role selector & hospital badges ---------- */
+.role-card-btn.role-admin.active {
+  border-color: #dc2626;
+  background: #fef2f2;
+  box-shadow: 0 4px 14px rgba(220, 38, 38, 0.16);
+}
+.role-card-btn.role-staff.active {
+  border-color: #0284c7;
+  background: #f0f9ff;
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.16);
+}
+.role-card-btn.role-admin.active .rc-badge {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.role-card-btn.role-staff.active .rc-badge {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+.role-card-btn.role-admin.active .rc-title {
+  color: #991b1b;
+}
+.role-card-btn.role-staff.active .rc-title {
+  color: #0369a1;
+}
+
+.role-rules-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 0.8rem;
+}
+.role-rules-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.role-rules-list .icon-yes {
+  color: #16a34a;
+  font-weight: bold;
+}
+.role-rules-list .icon-no {
+  color: #dc2626;
+  font-weight: bold;
+}
+
+/* Shift Handover Card */
+.shift-card {
+  background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+  border: 1px solid #bbf7d0;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+.shift-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.shift-card-head h2 {
+  font-size: 1.1rem;
+  color: #166534;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.shift-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+}
+.shift-stat-box {
+  background: #fff;
+  border: 1px solid #dcfce7;
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+.shift-stat-box .num {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #15803d;
+}
+.shift-stat-box .lbl {
+  font-size: 0.76rem;
+  color: #4b5563;
+  margin-top: 2px;
+}
+
+/* Write-off approval badges & callouts */
+.badge.pending {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+.badge.approved {
+  background: #dcfce7;
+  color: #166534;
+}
+.badge.rejected {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.approval-panel {
+  border: 1px solid #fcd34d;
+  background: #fffbeb;
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-bottom: 20px;
+}
+.approval-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.approval-panel-head h2 {
+  font-size: 1.05rem;
+  color: #92400e;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* ---------- responsive ---------- */
 @media (max-width: 1200px) { .stats { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 860px) {

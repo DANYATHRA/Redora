@@ -314,33 +314,41 @@
             <p class="subtag" id="portal-subtitle">Access hospital master inventory, security controls, and audit trails</p>
 
             <div class="quick-role-selector">
-              <button type="button" class="role-card-btn active" id="chip-admin" data-role="admin">
+              <button type="button" class="role-card-btn role-admin active" id="chip-admin" data-role="admin">
                 <div class="rc-top">
                   <span class="rc-icon">🛡️</span>
                   <span class="rc-badge">Admin</span>
                 </div>
                 <div class="rc-title">Administrator</div>
-                <div class="rc-desc">Full system & user control</div>
+                <div class="rc-desc">Store Manager / Chief Pharmacist</div>
               </button>
 
-              <button type="button" class="role-card-btn" id="chip-staff" data-role="staff">
+              <button type="button" class="role-card-btn role-staff" id="chip-staff" data-role="staff">
                 <div class="rc-top">
                   <span class="rc-icon">💊</span>
                   <span class="rc-badge">Staff</span>
                 </div>
                 <div class="rc-title">Pharmacy Staff</div>
-                <div class="rc-desc">Dispensing & ward orders</div>
+                <div class="rc-desc">Dispensing & Ward Orders</div>
               </button>
             </div>
 
             <div class="role-scope-callout" id="role-scope-desc">
-              <span>🛡️ <strong>Administrator Clearance:</strong> Full rights to manage users, correct stock, approve purchase orders, and configure hospital master settings.</span>
+              <div>
+                <div style="font-weight:700;margin-bottom:4px;color:#991b1b">🛡️ Administrator Authority (Full Control):</div>
+                <ul class="role-rules-list">
+                  <li><span class="icon-yes">✓</span> Manage user accounts, roles & system security</li>
+                  <li><span class="icon-yes">✓</span> Review & approve staff write-off requests</li>
+                  <li><span class="icon-yes">✓</span> Full financial costs & total inventory valuation</li>
+                  <li><span class="icon-yes">✓</span> Manual physical count corrections & deactivations</li>
+                </ul>
+              </div>
             </div>
 
             <form id="login-form" novalidate>
               <div class="form-error" role="alert"></div>
               <label class="field">Username or Email
-                <input type="text" name="username" id="login-user" value="admin" autocomplete="username" autocapitalize="none" required placeholder="admin or danyathra1507@gmail.com">
+                <input type="text" name="username" id="login-user" value="admin" autocomplete="username" autocapitalize="none" required placeholder="admin or email">
               </label>
               <label class="field">Password
                 <input type="password" name="password" id="login-pass" value="Redora@123" autocomplete="current-password" required placeholder="••••••••">
@@ -348,7 +356,7 @@
               <button class="btn block" id="login-submit-btn" type="submit" style="margin-top:8px">Sign In to Administrator Console →</button>
               <div class="login-extra">
                 <a href="#/forgot-password" class="muted small" data-action="forgot-password">Forgot password?</a>
-                <span class="muted small">Redora v1.3</span>
+                <span class="muted small">Redora v1.4 Role Guard</span>
               </div>
             </form>
           </div>
@@ -370,8 +378,18 @@
       chipAdmin.classList.add("active");
       chipStaff.classList.remove("active");
       pTitle.textContent = "Administrator Portal";
-      pSubtitle.textContent = "Access hospital master inventory, security controls, and audit trails";
-      pDesc.innerHTML = "<span>🛡️ <strong>Administrator Clearance:</strong> Full rights to manage users, correct stock, approve purchase orders, and configure hospital master settings.</span>";
+      pSubtitle.textContent = "Store Manager / Chief Pharmacist — Governance, audits & system security";
+      pDesc.innerHTML = `
+        <div>
+          <div style="font-weight:700;margin-bottom:4px;color:#991b1b">🛡️ Administrator Authority (Full Control):</div>
+          <ul class="role-rules-list">
+            <li><span class="icon-yes">✓</span> Manage user accounts, roles & system security</li>
+            <li><span class="icon-yes">✓</span> Review & approve staff write-off requests</li>
+            <li><span class="icon-yes">✓</span> Full financial costs & total inventory valuation</li>
+            <li><span class="icon-yes">✓</span> Manual physical count corrections & deactivations</li>
+          </ul>
+        </div>
+      `;
       submitBtn.textContent = "Sign In to Administrator Console →";
       submitBtn.className = "btn block";
       uInput.value = "admin";
@@ -382,10 +400,22 @@
       chipStaff.classList.add("active");
       chipAdmin.classList.remove("active");
       pTitle.textContent = "Pharmacy & Ward Staff Portal";
-      pSubtitle.textContent = "Dispensing operations, ward orders, deliveries, and barcode scanning";
-      pDesc.innerHTML = "<span>💊 <strong>Pharmacy Staff Mode:</strong> Routine dispensing rights to receive deliveries, issue stock to wards, inter-store transfers, and scan barcodes.</span>";
+      pSubtitle.textContent = "Dispensing Pharmacist / Storekeeper / Nurse — Daily physical operations";
+      pDesc.innerHTML = `
+        <div>
+          <div style="font-weight:700;margin-bottom:4px;color:#0369a1">💊 Pharmacy Staff Mode (Daily Operations):</div>
+          <ul class="role-rules-list">
+            <li><span class="icon-yes">✓</span> Dispense & issue stock to hospital wards (ICU, OT, OPD)</li>
+            <li><span class="icon-yes">✓</span> Receive deliveries from suppliers & scan barcodes</li>
+            <li><span class="icon-yes">✓</span> Submit damaged/expired write-off requests for approval</li>
+            <li><span class="icon-no">✕</span> Purchase prices & valuations hidden for loss prevention</li>
+            <li><span class="icon-no">✕</span> Silent count alterations & record deletion blocked</li>
+          </ul>
+        </div>
+      `;
       submitBtn.textContent = "Sign In to Pharmacy Staff Portal →";
       submitBtn.className = "btn block";
+      submitBtn.style.background = "#0284c7";
       uInput.value = "staff";
       pInput.value = "Redora@123";
     });
@@ -407,35 +437,37 @@
       ["stock-out", "Issue stock", "out"],
       ["transfers", "Stock transfers", "transfers"],
       ["purchase-orders", "Purchase orders", "po"],
-      ["reports", "Reports & valuation", "reports"],
-      ["stock-take", "Cycle counts", "stocktake"],
-      ["history", "History", "history"],
+      ["reports", isAdmin ? "Reports & valuation" : "Consumption reports", "reports"],
+      ...(isAdmin ? [["stock-take", "Cycle counts", "stocktake"]] : []),
+      ["history", "History & shifts", "history"],
       ["suppliers", "Suppliers", "suppliers"],
       ["settings", "Settings", "settings"],
     ];
 
     const roleBanner = isAdmin
-      ? `<div style="margin: 0 4px 10px; padding: 6px 10px; background: rgba(220, 38, 38, 0.25); border: 1px solid rgba(220, 38, 38, 0.45); border-radius: 8px; font-size: 0.76rem; font-weight: 700; color: #fecdd3; display: flex; align-items: center; gap: 6px">
-          <span>🛡️</span> ADMIN CONSOLE
+      ? `<div style="margin: 0 4px 10px; padding: 7px 10px; background: rgba(220, 38, 38, 0.28); border: 1px solid rgba(220, 38, 38, 0.55); border-radius: 8px; font-size: 0.74rem; font-weight: 700; color: #fecdd3; display: flex; align-items: center; justify-content: space-between">
+          <span style="display:flex;align-items:center;gap:6px"><span>🛡️</span> ADMIN CONSOLE</span>
+          <span style="font-size:0.68rem;opacity:0.85">OVERSIGHT</span>
         </div>`
-      : `<div style="margin: 0 4px 10px; padding: 6px 10px; background: rgba(37, 99, 235, 0.2); border: 1px solid rgba(37, 99, 235, 0.4); border-radius: 8px; font-size: 0.76rem; font-weight: 700; color: #bae6fd; display: flex; align-items: center; gap: 6px">
-          <span>💊</span> STAFF DISPENSING
+      : `<div style="margin: 0 4px 10px; padding: 7px 10px; background: rgba(2, 132, 199, 0.25); border: 1px solid rgba(2, 132, 199, 0.55); border-radius: 8px; font-size: 0.74rem; font-weight: 700; color: #bae6fd; display: flex; align-items: center; justify-content: space-between">
+          <span style="display:flex;align-items:center;gap:6px"><span>💊</span> STAFF DISPENSING</span>
+          <span style="font-size:0.68rem;opacity:0.85">OPERATIONS</span>
         </div>`;
 
     $("#app").innerHTML = `<div class="shell">
       <aside class="sidebar">
         <div class="brand">${LOGO}Redora</div>
         ${roleBanner}
-        <div class="nav-heading">Main</div>
+        <div class="nav-heading">Main Operations</div>
         <nav class="nav" aria-label="Main">${links.slice(0, 4)
           .map(([h, label, icon]) => `<a href="#/${h}" data-nav="${h}">${ICONS[icon]}<span>${label}</span></a>`)
           .join("")}</nav>
-        <div class="nav-heading">Operations</div>
-        <nav class="nav" aria-label="Operations">${links.slice(4, 8)
+        <div class="nav-heading">${isAdmin ? "Management & Audit" : "Store Movements"}</div>
+        <nav class="nav" aria-label="Operations">${links.slice(4, isAdmin ? 8 : 7)
           .map(([h, label, icon]) => `<a href="#/${h}" data-nav="${h}">${ICONS[icon]}<span>${label}</span></a>`)
           .join("")}</nav>
         <div class="nav-heading">System</div>
-        <nav class="nav" aria-label="System">${links.slice(8)
+        <nav class="nav" aria-label="System">${links.slice(isAdmin ? 8 : 7)
           .map(([h, label, icon]) => `<a href="#/${h}" data-nav="${h}">${ICONS[icon]}<span>${label}</span></a>`)
           .join("")}</nav>
         <div class="userbox"><strong>${esc(u.name)}</strong>
@@ -585,9 +617,59 @@
         </div>`
       : "";
 
-    return `${pageHead("Dashboard", `Hospital inventory overview · alerts look ${d.expiryWarnDays} days ahead`,
+    const isAdmin = state.user.role === "admin";
+
+    const approvalsBanner = isAdmin && d.pendingWriteOffs && d.pendingWriteOffs.length
+      ? `<section class="approval-panel">
+          <div class="approval-panel-head">
+            <h2>🛡️ Pending Staff Write-Off Approvals (${d.pendingWriteOffs.length})</h2>
+            <span class="small muted">Chief Pharmacist / Store Manager Authorization Required</span>
+          </div>
+          <div class="table-wrap"><table><thead><tr><th>Item</th><th>Batch</th><th>Store</th><th class="right">Qty</th><th>Reason</th><th>Requested By</th><th>Action</th></tr></thead><tbody>${d.pendingWriteOffs
+            .map((r) => `<tr>
+              <td><strong><a class="link" href="#/items/${r.item_id}">${esc(r.item_name)}</a></strong></td>
+              <td><code>${esc(r.batch_no)}</code></td>
+              <td>${esc(r.store_name || "Main")}</td>
+              <td class="right num"><strong>${r.quantity}</strong> ${esc(r.unit)}</td>
+              <td>${esc(r.reason)}</td>
+              <td class="small">${esc(r.requested_by_name || "Staff")}<span class="sub">${fmtTime(r.requested_at)}</span></td>
+              <td class="right" style="white-space:nowrap">
+                <button class="btn sm" data-action="approve-writeoff" data-id="${r.id}">Approve & Deduct</button>
+                <button class="btn sm danger" data-action="reject-writeoff" data-id="${r.id}">Reject</button>
+              </td>
+            </tr>`)
+            .join("")}</tbody></table></div>
+        </section>`
+      : "";
+
+    const shiftCard = !isAdmin && d.myShiftSummary
+      ? `<section class="shift-card">
+          <div class="shift-card-head">
+            <h2>💊 My Shift Activity Today (${fmtDay(d.myShiftSummary.date)})</h2>
+            <span class="small" style="color:#166534">Logged in as <strong>${esc(state.user.name)}</strong> · Individual Audit Record</span>
+          </div>
+          <div class="shift-stats-grid">
+            <div class="shift-stat-box"><div class="num">${d.myShiftSummary.in_units} <span style="font-size:0.8rem;font-weight:normal">units</span></div><div class="lbl">Deliveries Received (${d.myShiftSummary.in_count})</div></div>
+            <div class="shift-stat-box"><div class="num">${d.myShiftSummary.out_units} <span style="font-size:0.8rem;font-weight:normal">units</span></div><div class="lbl">Issued to Wards (${d.myShiftSummary.out_count})</div></div>
+            <div class="shift-stat-box"><div class="num">${d.myShiftSummary.transfer_units} <span style="font-size:0.8rem;font-weight:normal">units</span></div><div class="lbl">Transfers Done (${d.myShiftSummary.transfer_count})</div></div>
+            <div class="shift-stat-box"><div class="num">${(d.myShiftSummary.writeoff_requests || []).length}</div><div class="lbl">Write-Off Requests Logged</div></div>
+          </div>
+          ${(d.myShiftSummary.writeoff_requests || []).length ? `
+            <div style="margin-top:14px;background:#fff;border-radius:8px;padding:10px 14px;border:1px solid #dcfce7">
+              <div style="font-weight:600;font-size:0.85rem;margin-bottom:6px;color:#166534">My Write-off Requests Status:</div>
+              <div class="table-wrap"><table><thead><tr><th>Item</th><th>Batch</th><th>Qty</th><th>Reason</th><th>Status</th></tr></thead><tbody>${d.myShiftSummary.writeoff_requests
+                .map((wr) => `<tr><td>${esc(wr.item_name)}</td><td><code>${esc(wr.batch_no)}</code></td><td>${wr.quantity} ${esc(wr.unit)}</td><td>${esc(wr.reason)}</td><td><span class="badge ${wr.status}">${wr.status === "pending" ? "Pending Admin Approval" : wr.status}</span></td></tr>`)
+                .join("")}</tbody></table></div>
+            </div>
+          ` : ""}
+        </section>`
+      : "";
+
+    return `${pageHead("Dashboard", `Hospital inventory overview · ${isAdmin ? "Administrator Clearance" : "Pharmacy Staff Dispensing Mode"}`,
       '<button class="btn ghost" data-action="open-barcode-scan">' + ICONS.barcode + ' Scan item</button><a class="btn" href="#/stock-in">Receive stock</a><a class="btn ghost" href="#/stock-out">Issue stock</a>')}
       ${emptyDbBanner}
+      ${approvalsBanner}
+      ${shiftCard}
       ${alertBanner}
       <div class="stats">
         ${stat(t.items, "Active items", "#/items", "s-ok")}
@@ -688,11 +770,12 @@
     const isAdmin = state.user.role === "admin";
 
     const batchRows = batches.length
-      ? `<div class="table-wrap"><table><thead><tr><th>Batch</th><th>Store</th><th>Expiry</th><th class="right">In stock</th><th class="right">Unit cost</th><th>Received</th><th></th></tr></thead><tbody>${batches
+      ? `<div class="table-wrap"><table><thead><tr><th>Batch</th><th>Store</th><th>Expiry</th><th class="right">In stock</th>${isAdmin ? '<th class="right">Unit cost</th>' : ""}<th>Received</th><th></th></tr></thead><tbody>${batches
           .map(
             (b) => `<tr><td><strong>${esc(b.batch_no)}</strong></td><td>Store #${b.store_id || 1}</td><td>${item.tracks_expiry ? expiryBadge(b.expiry_date) : "—"}</td><td class="right num"><strong>${b.quantity}</strong> <span class="muted small">${esc(item.unit)}</span></td>
-            <td class="right num">${b.unit_cost != null ? fmtMoney(b.unit_cost) : "—"}</td><td class="small muted">${fmtTime(b.received_at)}</td>
-            <td class="right" style="white-space:nowrap">${b.quantity > 0 ? `<button class="btn sm danger" data-action="writeoff" data-batch="${b.id}" data-batchno="${esc(b.batch_no)}" data-qty="${b.quantity}">Write off</button>` : ""}
+            ${isAdmin ? `<td class="right num">${b.unit_cost != null ? fmtMoney(b.unit_cost) : "—"}</td>` : ""}
+            <td class="small muted">${fmtTime(b.received_at)}</td>
+            <td class="right" style="white-space:nowrap">${b.quantity > 0 ? `<button class="btn sm danger" data-action="writeoff" data-batch="${b.id}" data-batchno="${esc(b.batch_no)}" data-qty="${b.quantity}">${isAdmin ? "Write off" : "Request write-off"}</button>` : ""}
             ${isAdmin ? ` <button class="btn sm ghost" data-action="adjust" data-batch="${b.id}" data-batchno="${esc(b.batch_no)}" data-qty="${b.quantity}">Correct count</button>` : ""}</td></tr>`
           )
           .join("")}</tbody></table></div>`
@@ -749,13 +832,20 @@
   }
 
   function writeoffModal(batchId, batchNo, qty) {
-    openModal(`Write off batch ${batchNo}`, `<label class="field">Quantity to write off <span class="hint">(up to ${qty})</span><input type="number" name="quantity" min="1" max="${qty}" step="1" value="${qty}" required></label>
-      <label class="field">Reason<input type="text" name="reason" maxlength="200" placeholder="Expired, damaged, contaminated…" required></label>`,
+    const isAdmin = state.user.role === "admin";
+    const title = isAdmin ? `Write off batch ${batchNo}` : `Submit Write-off Request — Batch ${batchNo}`;
+    const policyNotice = isAdmin
+      ? '<p class="muted small">Administrator authorization: stock will be deducted immediately from this batch and logged permanently in audit movements.</p>'
+      : '<p class="muted small" style="background:#fef3c7;border:1px solid #fde68a;padding:8px 10px;border-radius:6px;color:#92400e"><strong>Two-step Hospital Safeguard:</strong> Pharmacy staff can submit write-off requests for expired or damaged items. Stock will be deducted once reviewed and approved by an Administrator.</p>';
+
+    openModal(title, `${policyNotice}
+      <label class="field">Quantity to write off <span class="hint">(up to ${qty})</span><input type="number" name="quantity" min="1" max="${qty}" step="1" value="${qty}" required></label>
+      <label class="field">Reason for write-off<input type="text" name="reason" maxlength="200" placeholder="Expired date passed, vial broken, cold-chain failure…" required></label>`,
       async (data) => {
-        await api("/stock/writeoff", { method: "POST", body: { batch_id: batchId, quantity: data.quantity, reason: data.reason } });
-        toast("Stock written off.");
+        const res = await api("/stock/writeoff", { method: "POST", body: { batch_id: batchId, quantity: data.quantity, reason: data.reason } });
+        toast(res.message || (isAdmin ? "Stock written off." : "Write-off request submitted for Admin approval."));
         reload();
-      }, "Write off");
+      }, isAdmin ? "Write off stock" : "Submit Request for Approval");
   }
   function adjustModal(batchId, batchNo, qty) {
     openModal(`Correct count — batch ${batchNo}`, `<p class="muted">Recorded quantity: <strong>${qty}</strong>. Use this after a physical stock count. The correction is logged in history.</p>
@@ -813,8 +903,12 @@
           <div class="grid2"><label class="field">Batch / lot number<input type="text" name="batch_no" maxlength="40"></label>
           <label class="field">Quantity received<input type="number" name="quantity" min="1" step="1" required></label></div>
           <div id="expiry-field"><label class="field">Expiry date<input type="date" name="expiry_date" min="${new Date().toISOString().slice(0, 10)}"></label></div>
-          <div class="grid2"><label class="field">Unit cost (₹ / $)<input type="number" name="unit_cost" min="0" step="0.01"></label>
-          <label class="field">Supplier<select name="supplier_id">${options(suppliers, "id", (s) => s.name, "", "— None —")}</select></label></div>
+          <div class="grid2">
+            ${state.user.role === "admin"
+              ? '<label class="field">Unit purchase cost (₹ / $)<input type="number" name="unit_cost" min="0" step="0.01" placeholder="Admin cost record"></label>'
+              : '<input type="hidden" name="unit_cost" value="">'}
+            <label class="field">Supplier<select name="supplier_id">${options(suppliers, "id", (s) => s.name, "", "— None —")}</select></label>
+          </div>
           <label class="field">Invoice / PO number <span class="hint">(optional)</span><input type="text" name="reference" maxlength="80"></label>
           <label class="field">Notes <span class="hint">(optional)</span><input type="text" name="notes" maxlength="300"></label>
           <button class="btn" type="submit">Receive stock</button></form></div></section>
@@ -947,6 +1041,7 @@
     const pos = await api("/purchase-orders" + (status ? "?status=" + status : ""));
     const suppliers = await api("/suppliers");
     view()._suppliers = suppliers;
+    const isAdmin = state.user.role === "admin";
 
     const stOptions = [["", "All POs"], ["draft", "Drafts"], ["ordered", "Ordered"], ["partially_received", "Partially received"], ["received", "Received"], ["cancelled", "Cancelled"]];
 
@@ -957,12 +1052,12 @@
         <span class="muted small">${pos.length} order${pos.length === 1 ? "" : "s"}</span>
       </div>
       ${pos.length
-        ? `<div class="table-wrap"><table><thead><tr><th>PO Number</th><th>Supplier</th><th>Store</th><th>Status</th><th>Invoice #</th><th class="right">Total</th><th>Date</th><th></th></tr></thead><tbody>${pos
+        ? `<div class="table-wrap"><table><thead><tr><th>PO Number</th><th>Supplier</th><th>Store</th><th>Status</th><th>Invoice #</th>${isAdmin ? '<th class="right">Total</th>' : ""}<th>Date</th><th></th></tr></thead><tbody>${pos
             .map(
               (p) => `<tr><td><strong><a class="link" href="#/purchase-orders/${p.id}">${esc(p.po_number)}</a></strong></td>
               <td>${esc(p.supplier_name || "—")}</td><td>${esc(p.store_name || "Main")}</td><td>${poBadge(p.status)}</td>
               <td>${p.invoice_number ? `<code>${esc(p.invoice_number)}</code>` : '<span class="muted">—</span>'}</td>
-              <td class="right num"><strong>${fmtMoney(p.total_amount)}</strong></td>
+              ${isAdmin ? `<td class="right num"><strong>${p.total_amount != null ? fmtMoney(p.total_amount) : "—"}</strong></td>` : ""}
               <td class="small muted">${p.ordered_at || p.created_at.slice(0, 10)}</td>
               <td class="right"><a class="btn sm ghost" href="#/purchase-orders/${p.id}">View order</a></td></tr>`
             )
@@ -975,14 +1070,15 @@
     document.title = `${po.po_number} — Redora`;
     view()._po = po;
     const isReceived = po.status === "received";
+    const isAdmin = state.user.role === "admin";
 
     const itemRows = (po.items || [])
       .map(
         (it) => `<tr>
           <td><strong>${esc(it.item_name)}</strong></td>
           <td class="right num">${it.quantity} ${esc(it.unit)}</td>
-          <td class="right num">${fmtMoney(it.unit_cost)}</td>
-          <td class="right num"><strong>${fmtMoney(it.quantity * it.unit_cost)}</strong></td>
+          ${isAdmin ? `<td class="right num">${it.unit_cost != null ? fmtMoney(it.unit_cost) : "—"}</td>` : ""}
+          ${isAdmin ? `<td class="right num"><strong>${it.unit_cost != null ? fmtMoney(it.quantity * it.unit_cost) : "—"}</strong></td>` : ""}
           <td class="right num"><span class="${it.received_qty >= it.quantity ? "pos" : "neg"}">${it.received_qty || 0}</span> / ${it.quantity}</td>
         </tr>`
       )
@@ -1006,8 +1102,8 @@
           <p class="muted small">Ordered on: ${po.ordered_at || "Not sent"} · Received on: ${po.received_at || "Pending"}</p>
         </div></section>
       </div>
-      <section class="panel"><div class="panel-head"><h2>Line items</h2><span class="muted">Grand total: <strong>${fmtMoney(po.total_amount)}</strong></span></div>
-        <div class="table-wrap"><table><thead><tr><th>Item</th><th class="right">Ordered qty</th><th class="right">Unit price</th><th class="right">Total</th><th class="right">Received so far</th></tr></thead><tbody>${itemRows}</tbody></table></div>
+      <section class="panel"><div class="panel-head"><h2>Line items</h2>${isAdmin ? `<span class="muted">Grand total: <strong>${fmtMoney(po.total_amount)}</strong></span>` : ""}</div>
+        <div class="table-wrap"><table><thead><tr><th>Item</th><th class="right">Ordered qty</th>${isAdmin ? '<th class="right">Unit price</th><th class="right">Total</th>' : ""}<th class="right">Received so far</th></tr></thead><tbody>${itemRows}</tbody></table></div>
       </section>`;
   }
 
@@ -1107,12 +1203,14 @@
 
   /* ================= reports & valuation ================= */
   async function viewReports(params) {
-    document.title = "Reports & Valuation — Redora";
-    const type = params.get("type") || "valuation";
+    const isAdmin = state.user.role === "admin";
+    let type = params.get("type") || (isAdmin ? "valuation" : "consumption");
+    if (!isAdmin && type === "valuation") type = "consumption";
+    document.title = (isAdmin ? "Reports & Valuation" : "Monthly Consumption Reports") + " — Redora";
     const month = params.get("month") || new Date().toISOString().slice(0, 7);
 
     let contentHtml = "";
-    if (type === "valuation") {
+    if (type === "valuation" && isAdmin) {
       const data = await api("/reports/valuation");
       const rows = data.items
         .map(
@@ -1147,7 +1245,7 @@
             <td class="right num"><strong>${it.issued_qty}</strong> <span class="muted small">${esc(it.unit)}</span></td>
             <td class="right num" style="color:var(--danger)">${it.written_off_qty || 0}</td>
             <td class="small">${deptBreakdown}</td>
-            <td class="right num"><strong>${fmtMoney(it.total_cost)}</strong></td>
+            ${isAdmin ? `<td class="right num"><strong>${fmtMoney(it.total_cost)}</strong></td>` : ""}
           </tr>`;
         })
         .join("");
@@ -1156,7 +1254,7 @@
         <div class="toolbar">
           <label class="small muted">Report month: <input type="month" id="rep-month" value="${esc(month)}"></label>
         </div>
-        <div class="table-wrap"><table><thead><tr><th>Item</th><th>Category</th><th class="right">Units Issued</th><th class="right">Written Off</th><th>Departments Consumed</th><th class="right">Valuation</th></tr></thead><tbody>${rows.length ? rows : '<tr><td colspan="6" class="empty">No consumption recorded in this month.</td></tr>'}</tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>Item</th><th>Category</th><th class="right">Units Issued</th><th class="right">Written Off</th><th>Departments Consumed</th>${isAdmin ? '<th class="right">Valuation</th>' : ""}</tr></thead><tbody>${rows.length ? rows : '<tr><td colspan="6" class="empty">No consumption recorded in this month.</td></tr>'}</tbody></table></div>
       `;
     }
 
@@ -1174,11 +1272,11 @@
         <h1>Redora Hospital Inventory Report</h1>
         <p>Report type: ${type.toUpperCase()} · Generated: ${new Date().toLocaleString()}</p>
       </div>
-      ${pageHead("Audit reports & stock valuation", "Hospital valuation statements and monthly ward consumption audits",
+      ${pageHead("Audit reports & consumption", "Hospital monthly ward consumption and audit statements",
         `<button class="btn ghost" onclick="window.print()">${ICONS.print} Print report</button>`)}
       <div class="tabs">
-        <a class="tab ${type === "valuation" ? "active" : ""}" href="#/reports?type=valuation">Stock Valuation Report</a>
-        <a class="tab ${type === "consumption" ? "active" : ""}" href="#/reports?type=consumption">Monthly Consumption Report</a>
+        ${isAdmin ? `<a class="tab ${type === "valuation" ? "active" : ""}" href="#/reports?type=valuation">Stock Valuation Report</a>` : ""}
+        <a class="tab ${type === "consumption" || !isAdmin ? "active" : ""}" href="#/reports?type=consumption">Monthly Consumption Report</a>
       </div>
       <section class="panel">${contentHtml}</section>`;
   }
@@ -1267,46 +1365,82 @@
   /* ================= history ================= */
   async function viewHistory() {
     document.title = "History — Redora";
-    const stores = await api("/stores");
+    const [stores, users] = await Promise.all([
+      api("/stores"),
+      api("/users/list").catch(() => []),
+    ]);
+
     after(() => {
       let rows = [];
-      const q = $("#h-q"), type = $("#h-type"), storeSel = $("#h-store"), from = $("#h-from"), to = $("#h-to"), out = $("#h-table"), exp = $("#h-export");
+      const q = $("#h-q"),
+        type = $("#h-type"),
+        storeSel = $("#h-store"),
+        userSel = $("#h-user"),
+        from = $("#h-from"),
+        to = $("#h-to"),
+        out = $("#h-table"),
+        exp = $("#h-export");
+
       const draw = () => {
         const term = q.value.trim().toLowerCase();
-        const shown = term ? rows.filter((r) => (r.item_name + " " + (r.batch_no || "") + " " + (r.reference || "") + " " + (r.department || "") + " " + (r.store || "")).toLowerCase().includes(term)) : rows;
+        const shown = term
+          ? rows.filter((r) =>
+              (
+                r.item_name +
+                " " +
+                (r.batch_no || "") +
+                " " +
+                (r.reference || "") +
+                " " +
+                (r.department || "") +
+                " " +
+                (r.store || "") +
+                " " +
+                (r.user_name || "")
+              ).toLowerCase().includes(term)
+            )
+          : rows;
         out.innerHTML = movementTable(shown);
         $("#h-count").textContent = `${shown.length} record${shown.length === 1 ? "" : "s"}${rows.length >= 500 ? " (latest 500)" : ""}`;
       };
+
       const load = async () => {
         const qs = new URLSearchParams({ limit: 500 });
         if (type.value) qs.set("type", type.value);
         if (storeSel && storeSel.value) qs.set("store_id", storeSel.value);
+        if (userSel && userSel.value) qs.set("user_id", userSel.value);
         if (from.value) qs.set("from", from.value);
         if (to.value) qs.set("to", to.value);
         out.innerHTML = '<div class="empty">Loading…</div>';
         try {
           rows = await api("/movements?" + qs);
-          const ex = new URLSearchParams(qs); ex.delete("limit");
+          const ex = new URLSearchParams(qs);
+          ex.delete("limit");
           exp.href = "/api/export/movements.csv?" + ex;
           draw();
-        } catch (e) { out.innerHTML = `<div class="form-error">${esc(e.message)}</div>`; }
+        } catch (e) {
+          out.innerHTML = `<div class="form-error">${esc(e.message)}</div>`;
+        }
       };
-      [type, storeSel, from, to].filter(Boolean).forEach((el) => el.addEventListener("change", load));
+
+      [type, storeSel, userSel, from, to].filter(Boolean).forEach((el) => el.addEventListener("change", load));
       q.addEventListener("input", draw);
       load();
     });
-    return `${pageHead("Stock history", "Permanent audit log of every receipt, issue, transfer, write-off and correction", '<a class="btn ghost" id="h-export" href="/api/export/movements.csv">Export CSV</a>')}
+
+    return `${pageHead("Stock history & shift audit", "Permanent audit log of every receipt, issue, transfer, write-off and correction", '<a class="btn ghost" id="h-export" href="/api/export/movements.csv">Export CSV</a>')}
       <section class="panel"><div class="toolbar">
-        <input type="search" id="h-q" placeholder="Search item, batch, reference, department, store…" aria-label="Search history">
+        <input type="search" id="h-q" placeholder="Search item, batch, reference, department, staff…" aria-label="Search history">
         <select id="h-type" aria-label="Type">
-          <option value="">All types</option>
+          <option value="">All movement types</option>
           <option value="in">Received</option>
-          <option value="out">Issued</option>
+          <option value="out">Issued to wards</option>
           <option value="transfer">Transferred</option>
           <option value="writeoff">Written off</option>
           <option value="adjust">Corrections</option>
         </select>
         <select id="h-store"><option value="">All stores</option>${options(stores, "id", (s) => s.name)}</select>
+        <select id="h-user"><option value="">All staff members</option>${options(users, "id", (u) => `${u.name} (${u.role})`)}</select>
         <label class="small muted">From <input type="date" id="h-from"></label><label class="small muted">To <input type="date" id="h-to"></label>
         <span class="muted small" id="h-count"></span></div><div id="h-table"></div></section>`;
   }
@@ -1542,6 +1676,27 @@
       catch (e) { toast(e.message, true); }
     },
     writeoff: (el) => writeoffModal(Number(el.dataset.batch), el.dataset.batchno, Number(el.dataset.qty)),
+    "approve-writeoff": async (el) => {
+      if (!confirm("Approve this write-off request? Stock will be permanently deducted.")) return;
+      try {
+        await api(`/writeoff-requests/${el.dataset.id}/approve`, { method: "POST" });
+        toast("Write-off request approved and stock deducted.");
+        reload();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    },
+    "reject-writeoff": async (el) => {
+      const notes = prompt("Enter reason for rejection (optional):", "Rejected by administrator");
+      if (notes === null) return;
+      try {
+        await api(`/writeoff-requests/${el.dataset.id}/reject`, { method: "POST", body: { notes } });
+        toast("Write-off request rejected.");
+        reload();
+      } catch (e) {
+        toast(e.message, true);
+      }
+    },
     adjust: (el) => adjustModal(Number(el.dataset.batch), el.dataset.batchno, Number(el.dataset.qty)),
     "new-supplier": () => openSupplierModal(null),
     "edit-supplier": (el) => openSupplierModal(view()._suppliers.find((s) => s.id === Number(el.dataset.id))),

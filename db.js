@@ -244,6 +244,32 @@ stockTakeSchema.pre("save", async function (next) {
   next();
 });
 
+/* Write-off Requests (Two-Step Approval for Staff) */
+const writeOffRequestSchema = new mongoose.Schema({
+  id: { type: Number, unique: true },
+  item_id: { type: Number, required: true, index: true },
+  item_name: { type: String, required: true },
+  batch_id: { type: Number, required: true },
+  batch_no: { type: String, required: true },
+  store_id: { type: Number, default: 1 },
+  store_name: String,
+  quantity: { type: Number, required: true },
+  unit: { type: String, default: "units" },
+  reason: { type: String, required: true },
+  status: { type: String, enum: ["pending", "approved", "rejected"], default: "pending", index: true },
+  requested_by_id: Number,
+  requested_by_name: String,
+  requested_at: { type: String, default: () => new Date().toISOString().replace("T", " ").slice(0, 19) },
+  reviewed_by_id: Number,
+  reviewed_by_name: String,
+  reviewed_at: String,
+  review_notes: String,
+});
+writeOffRequestSchema.pre("save", async function (next) {
+  if (!this.id) this.id = await nextId("writeoff_request");
+  next();
+});
+
 /* Alert Configuration */
 const alertConfigSchema = new mongoose.Schema({
   id: { type: Number, default: 1, unique: true },
@@ -269,6 +295,7 @@ const ItemAudit = mongoose.model("ItemAudit", itemAuditSchema);
 const PasswordReset = mongoose.model("PasswordReset", passwordResetSchema);
 const StockTake = mongoose.model("StockTake", stockTakeSchema);
 const AlertConfig = mongoose.model("AlertConfig", alertConfigSchema);
+const WriteOffRequest = mongoose.model("WriteOffRequest", writeOffRequestSchema);
 
 /* ---------- seeds ---------- */
 async function seedDepartments() {
@@ -469,6 +496,7 @@ module.exports = {
   PasswordReset,
   StockTake,
   AlertConfig,
+  WriteOffRequest,
   hashPassword,
   verifyPassword,
   ensureAdmin,
