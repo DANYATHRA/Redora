@@ -27,6 +27,23 @@ app.use((req, res, next) => {
   });
   next();
 });
+
+/* ---------- DB init (cached for serverless cold starts) ---------- */
+let _initPromise = null;
+function initOnce() {
+  if (!_initPromise) {
+    _initPromise = (async () => {
+      await connectDB();
+      await seedDepartments();
+      await ensureAdmin();
+    })();
+  }
+  return _initPromise;
+}
+app.use(async (_req, _res, next) => {
+  try { await initOnce(); next(); } catch (e) { next(e); }
+});
+
 app.use(express.static(path.join(__dirname, "public")));
 
 /* ---------- helpers ---------- */
@@ -616,9 +633,11 @@ app.use((err, _req, res, _next) => {
 });
 
 /* ---------- start ---------- */
-(async () => {
-  await connectDB();
-  await seedDepartments();
-  await ensureAdmin();
-  app.listen(PORT, () => console.log(`Redora running on http://localhost:${PORT}`));
-})();
+// Local development: listen on PORT
+if (require.main === module) {
+  initOnce().then(() => {
+    app.listen(PORT, () => console.log(`Redora running on http://localhost:${PORT}`));
+  });
+}
+
+module.exports = app;

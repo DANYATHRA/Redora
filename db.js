@@ -7,8 +7,14 @@ const MONGODB_URI =
   "mongodb+srv://danyathra1507_db_user:danyathra1507_db_user@cluster0.eg3j5nk.mongodb.net/redora?retryWrites=true&w=majority";
 
 /* ---------- connection ---------- */
+let isConnected = false;
 async function connectDB() {
+  if (isConnected || mongoose.connection.readyState === 1) {
+    isConnected = true;
+    return;
+  }
   await mongoose.connect(MONGODB_URI);
+  isConnected = true;
   console.log("Connected to MongoDB Atlas");
 }
 
