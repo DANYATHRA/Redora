@@ -326,28 +326,34 @@ function verifyPassword(password, stored) {
   }
 }
 
-/* ---------- first admin ---------- */
+/* ---------- first admin & staff ---------- */
 async function ensureAdmin(passwordOverride) {
-  const count = await User.countDocuments();
-  if (count > 0) return;
-  const username = (process.env.ADMIN_USERNAME || "admin").toLowerCase();
-  let password = passwordOverride || process.env.ADMIN_PASSWORD;
-  let generated = false;
-  if (!password) {
-    password = crypto.randomBytes(9).toString("base64url");
-    generated = true;
+  const defaultPassword = passwordOverride || process.env.ADMIN_PASSWORD || "Redora@123";
+  let admin = await User.findOne({ username: "admin" });
+  if (!admin) {
+    admin = new User({
+      username: "admin",
+      name: "Administrator",
+      role: "admin",
+      email: "admin@hospital.org",
+      password_hash: hashPassword(defaultPassword),
+      active: 1,
+    });
+    await admin.save();
+    console.log("Created initial admin account -> username: admin, password: " + defaultPassword);
   }
-  const user = new User({
-    username,
-    name: "Administrator",
-    role: "admin",
-    email: "admin@hospital.org",
-    password_hash: hashPassword(password),
-  });
-  await user.save();
-  console.log(`Created first admin account  ->  username: ${username}`);
-  if (generated) {
-    console.log(`Generated password (shown once, change it after signing in): ${password}`);
+
+  let staff = await User.findOne({ username: "staff" });
+  if (!staff) {
+    staff = new User({
+      username: "staff",
+      name: "Pharmacy Staff",
+      role: "staff",
+      email: "staff@hospital.org",
+      password_hash: hashPassword(defaultPassword),
+      active: 1,
+    });
+    await staff.save();
   }
 }
 
