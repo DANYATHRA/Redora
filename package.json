@@ -1,0 +1,16 @@
+{
+  "name": "redora",
+  "version": "1.0.0",
+  "description": "Redora — hospital inventory management",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "demo": "node seed-demo.js && node server.js"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
