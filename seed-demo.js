@@ -1,17 +1,11 @@
 // Fills an EMPTY database with sample hospital data so you can explore Redora.
 // Run with:  npm run demo      (never run this on a real production database)
-const { db, tx, hashPassword, ensureAdmin } = require("./db");
-
-if (db.prepare("SELECT COUNT(*) AS n FROM items").get().n > 0) {
-  console.log("Database already has items — demo data not added.");
-  process.exit(0);
-}
-
-ensureAdmin("Redora@123");
-if (!db.prepare("SELECT 1 FROM users WHERE username = 'staff'").get()) {
-  db.prepare("INSERT INTO users (username, name, role, password_hash) VALUES ('staff', 'Pharmacy Staff', 'staff', ?)")
-    .run(hashPassword("Redora@123"));
-}
+require("dotenv").config();
+const {
+  connectDB, mongoose,
+  User, Supplier, Department, Item, Batch, Movement,
+  hashPassword, ensureAdmin,
+} = require("./db");
 
 const day = (offset) => new Date(Date.now() + offset * 864e5).toISOString().slice(0, 10);
 const stamp = (offset, hour = 10) => {
@@ -21,29 +15,37 @@ const stamp = (offset, hour = 10) => {
   return d.toISOString().replace("T", " ").slice(0, 19);
 };
 
-const depts = Object.fromEntries(db.prepare("SELECT id, name FROM departments").all().map((d) => [d.name, d.id]));
+(async () => {
+  await connectDB();
 
-tx(() => {
-  const supplier = db.prepare("INSERT INTO suppliers (name, contact_person, phone, email, address) VALUES (?, ?, ?, ?, ?)");
-  const sup = {};
-  [
+  const itemCount = await Item.countDocuments();
+  if (itemCount > 0) {
+    console.log("Database already has items — demo data not added.");
+    process.exit(0);
+  }
+
+  await ensureAdmin("Redora@123");
+  if (!(await User.findOne({ username: "staff" }))) {
+    const staff = new User({ username: "staff", name: "Pharmacy Staff", role: "staff", password_hash: hashPassword("Redora@123") });
+    await staff.save();
+  }
+
+  const deptDocs = await Department.find({}).lean();
+  const depts = Object.fromEntries(deptDocs.map((d) => [d.name, d.id]));
+
+  const supMap = {};
+  const suppliersData = [
     ["MediCore Pharma Distributors", "Anil Kumar", "+91 98400 11122", "orders@medicore.example", "12 Industrial Estate, Coimbatore"],
     ["SteriSafe Surgical Supplies", "Priya Nair", "+91 98950 33445", "sales@sterisafe.example", "45 Market Road, Kochi"],
     ["LabLine Diagnostics", "R. Venkatesh", "+91 99620 55667", "support@labline.example", "7 Tech Park, Chennai"],
     ["CareWear PPE Traders", "Meena Iyer", "+91 97100 77889", "hello@carewear.example", "88 Mill Street, Tiruppur"],
-  ].forEach((s) => { sup[s[0].split(" ")[0]] = Number(supplier.run(...s).lastInsertRowid); });
+  ];
+  for (const [name, contact_person, phone, email, address] of suppliersData) {
+    const sup = new Supplier({ name, contact_person, phone, email, address });
+    await sup.save();
+    supMap[name.split(" ")[0]] = sup.id;
+  }
 
-  const item = db.prepare(
-    `INSERT INTO items (name, code, category, unit, reorder_level, supplier_id, storage_location, tracks_expiry)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  );
-  const batch = db.prepare("INSERT INTO batches (item_id, batch_no, expiry_date, quantity, unit_cost, received_at) VALUES (?, ?, ?, ?, ?, ?)");
-  const move = db.prepare(
-    `INSERT INTO movements (item_id, batch_id, type, quantity, department_id, supplier_id, reference, notes, user_id, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`
-  );
-
-  // [name, code, category, unit, reorder, supplier, location, expiry?, batches[[batchNo, expiryOffsetDays, received, issued, cost]]]
   const catalog = [
     ["Paracetamol 500 mg", "MED-001", "Medicine", "strips", 100, "MediCore", "Pharmacy A-1", 1, [["PCM2401", 420, 400, 150, 12.5], ["PCM2407", 700, 300, 40, 13]]],
     ["Amoxicillin 500 mg", "MED-002", "Medicine", "strips", 80, "MediCore", "Pharmacy A-2", 1, [["AMX2312", 45, 200, 140, 38]]],
@@ -66,22 +68,48 @@ tx(() => {
   const deptCycle = ["Emergency", "ICU", "General Ward", "Operation Theatre", "Pharmacy", "Outpatient (OPD)", "Laboratory"];
   let n = 0;
   for (const [name, code, cat, unit, reorder, sName, loc, exp, batches] of catalog) {
-    const itemId = Number(item.run(name, code, cat, unit, reorder, sup[sName], loc, exp).lastInsertRowid);
-    batches.forEach(([bno, expOff, received, issued, cost], bi) => {
+    const newItem = new Item({ name, code, category: cat, unit, reorder_level: reorder, supplier_id: supMap[sName], storage_location: loc, tracks_expiry: exp });
+    await newItem.save();
+    const itemId = newItem.id;
+
+    for (let bi = 0; bi < batches.length; bi++) {
+      const [bno, expOff, received, issued, cost] = batches[bi];
       const left = received - issued;
-      const batchId = Number(batch.run(itemId, bno, expOff === null ? null : day(expOff), left, cost, stamp(-60 + bi * 10)).lastInsertRowid);
-      move.run(itemId, batchId, "in", received, null, sup[sName], `PO-${2400 + n}`, null, stamp(-60 + bi * 10));
-      // spread the issues over recent days
+      const newBatch = new Batch({
+        item_id: itemId, batch_no: bno,
+        expiry_date: expOff === null ? null : day(expOff),
+        quantity: left, unit_cost: cost,
+        received_at: stamp(-60 + bi * 10),
+      });
+      await newBatch.save();
+      const batchId = newBatch.id;
+
+      const moveIn = new Movement({
+        item_id: itemId, batch_id: batchId, type: "in", quantity: received,
+        department_id: null, supplier_id: supMap[sName],
+        reference: `PO-${2400 + n}`, notes: null, user_id: 1,
+        created_at: stamp(-60 + bi * 10),
+      });
+      await moveIn.save();
+
       let rest = issued, k = 0;
       while (rest > 0) {
         const q = Math.min(rest, Math.max(1, Math.round(issued / 6)));
         const dept = deptCycle[(n + k) % deptCycle.length];
-        move.run(itemId, batchId, "out", -q, depts[dept], null, `REQ-${3000 + n * 10 + k}`, null, stamp(-((k * 2 + n) % 13), 9 + (k % 8)));
+        const moveOut = new Movement({
+          item_id: itemId, batch_id: batchId, type: "out", quantity: -q,
+          department_id: depts[dept], supplier_id: null,
+          reference: `REQ-${3000 + n * 10 + k}`, notes: null, user_id: 1,
+          created_at: stamp(-((k * 2 + n) % 13), 9 + (k % 8)),
+        });
+        await moveOut.save();
         rest -= q; k++;
       }
       n++;
-    });
+    }
   }
-});
 
-console.log("Demo data added.  Sign in with  admin / Redora@123  or  staff / Redora@123");
+  console.log("Demo data added.  Sign in with  admin / Redora@123  or  staff / Redora@123");
+  await mongoose.disconnect();
+  process.exit(0);
+})();

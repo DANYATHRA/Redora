@@ -1,120 +1,155 @@
-// Database layer — uses Node's built-in SQLite (node:sqlite, Node 22.5+).
-const { DatabaseSync } = require("node:sqlite");
-const fs = require("fs");
-const path = require("path");
+// Database layer — MongoDB via Mongoose
+const mongoose = require("mongoose");
 const crypto = require("crypto");
 
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
-fs.mkdirSync(DATA_DIR, { recursive: true });
+const MONGODB_URI =
+  process.env.MONGODB_URI ||
+  "mongodb+srv://danyathra1507_db_user:danyathra1507_db_user@cluster0.eg3j5nk.mongodb.net/redora?retryWrites=true&w=majority";
 
-const db = new DatabaseSync(path.join(DATA_DIR, "redora.db"));
-db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
-
-db.exec(`
-CREATE TABLE IF NOT EXISTS users (
-  id INTEGER PRIMARY KEY,
-  username TEXT NOT NULL UNIQUE,
-  name TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('admin','staff')),
-  password_hash TEXT NOT NULL,
-  active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS sessions (
-  token_hash TEXT PRIMARY KEY,
-  user_id INTEGER NOT NULL REFERENCES users(id),
-  expires_at INTEGER NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS suppliers (
-  id INTEGER PRIMARY KEY,
-  name TEXT NOT NULL UNIQUE,
-  contact_person TEXT,
-  phone TEXT,
-  email TEXT,
-  address TEXT,
-  active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS departments (
-  id INTEGER PRIMARY KEY,
-  name TEXT NOT NULL UNIQUE
-);
-
-CREATE TABLE IF NOT EXISTS items (
-  id INTEGER PRIMARY KEY,
-  name TEXT NOT NULL,
-  code TEXT UNIQUE,
-  category TEXT NOT NULL,
-  unit TEXT NOT NULL DEFAULT 'units',
-  reorder_level INTEGER NOT NULL DEFAULT 0 CHECK (reorder_level >= 0),
-  supplier_id INTEGER REFERENCES suppliers(id),
-  storage_location TEXT,
-  tracks_expiry INTEGER NOT NULL DEFAULT 1,
-  notes TEXT,
-  active INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS batches (
-  id INTEGER PRIMARY KEY,
-  item_id INTEGER NOT NULL REFERENCES items(id),
-  batch_no TEXT NOT NULL,
-  expiry_date TEXT,
-  quantity INTEGER NOT NULL DEFAULT 0 CHECK (quantity >= 0),
-  unit_cost REAL,
-  received_at TEXT NOT NULL DEFAULT (datetime('now')),
-  UNIQUE (item_id, batch_no)
-);
-
-CREATE TABLE IF NOT EXISTS movements (
-  id INTEGER PRIMARY KEY,
-  item_id INTEGER NOT NULL REFERENCES items(id),
-  batch_id INTEGER REFERENCES batches(id),
-  type TEXT NOT NULL CHECK (type IN ('in','out','adjust','writeoff')),
-  quantity INTEGER NOT NULL,            -- signed change: + adds stock, - removes stock
-  department_id INTEGER REFERENCES departments(id),
-  supplier_id INTEGER REFERENCES suppliers(id),
-  reference TEXT,
-  notes TEXT,
-  user_id INTEGER REFERENCES users(id),
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE INDEX IF NOT EXISTS idx_batches_item ON batches(item_id);
-CREATE INDEX IF NOT EXISTS idx_movements_item ON movements(item_id);
-CREATE INDEX IF NOT EXISTS idx_movements_created ON movements(created_at);
-`);
-
-// Default departments (only when the table is empty)
-if (db.prepare("SELECT COUNT(*) AS n FROM departments").get().n === 0) {
-  const ins = db.prepare("INSERT INTO departments (name) VALUES (?)");
-  [
-    "Pharmacy",
-    "Emergency",
-    "ICU",
-    "Operation Theatre",
-    "General Ward",
-    "Laboratory",
-    "Radiology",
-    "Outpatient (OPD)",
-  ].forEach((n) => ins.run(n));
+/* ---------- connection ---------- */
+async function connectDB() {
+  await mongoose.connect(MONGODB_URI);
+  console.log("Connected to MongoDB Atlas");
 }
 
-function tx(fn) {
-  db.exec("BEGIN");
-  try {
-    const result = fn();
-    db.exec("COMMIT");
-    return result;
-  } catch (err) {
-    db.exec("ROLLBACK");
-    throw err;
+/* ---------- counter helper (auto-increment IDs) ---------- */
+const counterSchema = new mongoose.Schema({
+  _id: String,
+  seq: { type: Number, default: 0 },
+});
+const Counter = mongoose.model("Counter", counterSchema);
+
+async function nextId(name) {
+  const c = await Counter.findByIdAndUpdate(
+    name,
+    { $inc: { seq: 1 } },
+    { upsert: true, new: true }
+  );
+  return c.seq;
+}
+
+/* ---------- schemas ---------- */
+const userSchema = new mongoose.Schema({
+  id: { type: Number, unique: true },
+  username: { type: String, required: true, unique: true },
+  name: { type: String, required: true },
+  role: { type: String, enum: ["admin", "staff"], required: true },
+  password_hash: { type: String, required: true },
+  active: { type: Number, default: 1 },
+  created_at: { type: String, default: () => new Date().toISOString().replace("T", " ").slice(0, 19) },
+});
+userSchema.pre("save", async function (next) {
+  if (!this.id) this.id = await nextId("user");
+  next();
+});
+
+const sessionSchema = new mongoose.Schema({
+  token_hash: { type: String, required: true, unique: true },
+  user_id: { type: Number, required: true },
+  expires_at: { type: Number, required: true },
+});
+
+const supplierSchema = new mongoose.Schema({
+  id: { type: Number, unique: true },
+  name: { type: String, required: true, unique: true },
+  contact_person: String,
+  phone: String,
+  email: String,
+  address: String,
+  active: { type: Number, default: 1 },
+  created_at: { type: String, default: () => new Date().toISOString().replace("T", " ").slice(0, 19) },
+});
+supplierSchema.pre("save", async function (next) {
+  if (!this.id) this.id = await nextId("supplier");
+  next();
+});
+
+const departmentSchema = new mongoose.Schema({
+  id: { type: Number, unique: true },
+  name: { type: String, required: true, unique: true },
+});
+departmentSchema.pre("save", async function (next) {
+  if (!this.id) this.id = await nextId("department");
+  next();
+});
+
+const itemSchema = new mongoose.Schema({
+  id: { type: Number, unique: true },
+  name: { type: String, required: true },
+  code: { type: String, sparse: true },
+  category: { type: String, required: true },
+  unit: { type: String, default: "units" },
+  reorder_level: { type: Number, default: 0 },
+  supplier_id: Number,
+  storage_location: String,
+  tracks_expiry: { type: Number, default: 1 },
+  notes: String,
+  active: { type: Number, default: 1 },
+  created_at: { type: String, default: () => new Date().toISOString().replace("T", " ").slice(0, 19) },
+});
+itemSchema.pre("save", async function (next) {
+  if (!this.id) this.id = await nextId("item");
+  next();
+});
+
+const batchSchema = new mongoose.Schema({
+  id: { type: Number, unique: true },
+  item_id: { type: Number, required: true, index: true },
+  batch_no: { type: String, required: true },
+  expiry_date: String,
+  quantity: { type: Number, default: 0 },
+  unit_cost: Number,
+  received_at: { type: String, default: () => new Date().toISOString().replace("T", " ").slice(0, 19) },
+});
+batchSchema.index({ item_id: 1, batch_no: 1 }, { unique: true });
+batchSchema.pre("save", async function (next) {
+  if (!this.id) this.id = await nextId("batch");
+  next();
+});
+
+const movementSchema = new mongoose.Schema({
+  id: { type: Number, unique: true },
+  item_id: { type: Number, required: true, index: true },
+  batch_id: Number,
+  type: { type: String, enum: ["in", "out", "adjust", "writeoff"], required: true },
+  quantity: { type: Number, required: true },
+  department_id: Number,
+  supplier_id: Number,
+  reference: String,
+  notes: String,
+  user_id: Number,
+  created_at: { type: String, default: () => new Date().toISOString().replace("T", " ").slice(0, 19), index: true },
+});
+movementSchema.pre("save", async function (next) {
+  if (!this.id) this.id = await nextId("movement");
+  next();
+});
+
+/* ---------- models ---------- */
+const User = mongoose.model("User", userSchema);
+const Session = mongoose.model("Session", sessionSchema);
+const Supplier = mongoose.model("Supplier", supplierSchema);
+const Department = mongoose.model("Department", departmentSchema);
+const Item = mongoose.model("Item", itemSchema);
+const Batch = mongoose.model("Batch", batchSchema);
+const Movement = mongoose.model("Movement", movementSchema);
+
+/* ---------- seed default departments ---------- */
+async function seedDepartments() {
+  const count = await Department.countDocuments();
+  if (count === 0) {
+    const names = [
+      "Pharmacy", "Emergency", "ICU", "Operation Theatre",
+      "General Ward", "Laboratory", "Radiology", "Outpatient (OPD)",
+    ];
+    for (const name of names) {
+      const dept = new Department({ name });
+      await dept.save();
+    }
   }
 }
 
+/* ---------- password helpers ---------- */
 function hashPassword(password) {
   const salt = crypto.randomBytes(16);
   const hash = crypto.scryptSync(password, salt, 64);
@@ -133,9 +168,10 @@ function verifyPassword(password, stored) {
   }
 }
 
-// Creates the first admin account if no users exist yet.
-function ensureAdmin(passwordOverride) {
-  if (db.prepare("SELECT COUNT(*) AS n FROM users").get().n > 0) return;
+/* ---------- first admin ---------- */
+async function ensureAdmin(passwordOverride) {
+  const count = await User.countDocuments();
+  if (count > 0) return;
   const username = (process.env.ADMIN_USERNAME || "admin").toLowerCase();
   let password = passwordOverride || process.env.ADMIN_PASSWORD;
   let generated = false;
@@ -143,13 +179,17 @@ function ensureAdmin(passwordOverride) {
     password = crypto.randomBytes(9).toString("base64url");
     generated = true;
   }
-  db.prepare(
-    "INSERT INTO users (username, name, role, password_hash) VALUES (?, ?, 'admin', ?)"
-  ).run(username, "Administrator", hashPassword(password));
+  const user = new User({ username, name: "Administrator", role: "admin", password_hash: hashPassword(password) });
+  await user.save();
   console.log(`Created first admin account  ->  username: ${username}`);
   if (generated) {
     console.log(`Generated password (shown once, change it after signing in): ${password}`);
   }
 }
 
-module.exports = { db, tx, hashPassword, verifyPassword, ensureAdmin };
+module.exports = {
+  connectDB,
+  mongoose,
+  User, Session, Supplier, Department, Item, Batch, Movement,
+  hashPassword, verifyPassword, ensureAdmin, seedDepartments, nextId,
+};
