@@ -310,18 +310,31 @@
 
           <!-- Right Login Form -->
           <div class="portal-form-pane">
-            <h2>Sign in to Portal</h2>
-            <p class="subtag">Choose an authorized staff profile or enter your credentials</p>
+            <h2 id="portal-title">Administrator Portal</h2>
+            <p class="subtag" id="portal-subtitle">Access hospital master inventory, security controls, and audit trails</p>
 
             <div class="quick-role-selector">
-              <button type="button" class="role-chip active" id="chip-admin" data-role="admin">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                Administrator
+              <button type="button" class="role-card-btn active" id="chip-admin" data-role="admin">
+                <div class="rc-top">
+                  <span class="rc-icon">🛡️</span>
+                  <span class="rc-badge">Admin</span>
+                </div>
+                <div class="rc-title">Administrator</div>
+                <div class="rc-desc">Full system & user control</div>
               </button>
-              <button type="button" class="role-chip" id="chip-staff" data-role="staff">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                Pharmacy Staff
+
+              <button type="button" class="role-card-btn" id="chip-staff" data-role="staff">
+                <div class="rc-top">
+                  <span class="rc-icon">💊</span>
+                  <span class="rc-badge">Staff</span>
+                </div>
+                <div class="rc-title">Pharmacy Staff</div>
+                <div class="rc-desc">Dispensing & ward orders</div>
               </button>
+            </div>
+
+            <div class="role-scope-callout" id="role-scope-desc">
+              <span>🛡️ <strong>Administrator Clearance:</strong> Full rights to manage users, correct stock, approve purchase orders, and configure hospital master settings.</span>
             </div>
 
             <form id="login-form" novalidate>
@@ -332,7 +345,7 @@
               <label class="field">Password
                 <input type="password" name="password" id="login-pass" value="Redora@123" autocomplete="current-password" required placeholder="••••••••">
               </label>
-              <button class="btn block" type="submit" style="margin-top:8px">Enter Redora Portal →</button>
+              <button class="btn block" id="login-submit-btn" type="submit" style="margin-top:8px">Sign In to Administrator Console →</button>
               <div class="login-extra">
                 <a href="#/forgot-password" class="muted small" data-action="forgot-password">Forgot password?</a>
                 <span class="muted small">Redora v1.3</span>
@@ -348,10 +361,19 @@
     const pInput = $("#login-pass");
     const chipAdmin = $("#chip-admin");
     const chipStaff = $("#chip-staff");
+    const pTitle = $("#portal-title");
+    const pSubtitle = $("#portal-subtitle");
+    const pDesc = $("#role-scope-desc");
+    const submitBtn = $("#login-submit-btn");
 
     chipAdmin.addEventListener("click", () => {
       chipAdmin.classList.add("active");
       chipStaff.classList.remove("active");
+      pTitle.textContent = "Administrator Portal";
+      pSubtitle.textContent = "Access hospital master inventory, security controls, and audit trails";
+      pDesc.innerHTML = "<span>🛡️ <strong>Administrator Clearance:</strong> Full rights to manage users, correct stock, approve purchase orders, and configure hospital master settings.</span>";
+      submitBtn.textContent = "Sign In to Administrator Console →";
+      submitBtn.className = "btn block";
       uInput.value = "admin";
       pInput.value = "Redora@123";
     });
@@ -359,6 +381,11 @@
     chipStaff.addEventListener("click", () => {
       chipStaff.classList.add("active");
       chipAdmin.classList.remove("active");
+      pTitle.textContent = "Pharmacy & Ward Staff Portal";
+      pSubtitle.textContent = "Dispensing operations, ward orders, deliveries, and barcode scanning";
+      pDesc.innerHTML = "<span>💊 <strong>Pharmacy Staff Mode:</strong> Routine dispensing rights to receive deliveries, issue stock to wards, inter-store transfers, and scan barcodes.</span>";
+      submitBtn.textContent = "Sign In to Pharmacy Staff Portal →";
+      submitBtn.className = "btn block";
       uInput.value = "staff";
       pInput.value = "Redora@123";
     });
@@ -372,6 +399,7 @@
 
   function renderShell() {
     const u = state.user;
+    const isAdmin = u.role === "admin";
     const links = [
       ["dashboard", "Dashboard", "dashboard"],
       ["items", "Items & stock", "items"],
@@ -385,9 +413,19 @@
       ["suppliers", "Suppliers", "suppliers"],
       ["settings", "Settings", "settings"],
     ];
+
+    const roleBanner = isAdmin
+      ? `<div style="margin: 0 4px 10px; padding: 6px 10px; background: rgba(220, 38, 38, 0.25); border: 1px solid rgba(220, 38, 38, 0.45); border-radius: 8px; font-size: 0.76rem; font-weight: 700; color: #fecdd3; display: flex; align-items: center; gap: 6px">
+          <span>🛡️</span> ADMIN CONSOLE
+        </div>`
+      : `<div style="margin: 0 4px 10px; padding: 6px 10px; background: rgba(37, 99, 235, 0.2); border: 1px solid rgba(37, 99, 235, 0.4); border-radius: 8px; font-size: 0.76rem; font-weight: 700; color: #bae6fd; display: flex; align-items: center; gap: 6px">
+          <span>💊</span> STAFF DISPENSING
+        </div>`;
+
     $("#app").innerHTML = `<div class="shell">
       <aside class="sidebar">
         <div class="brand">${LOGO}Redora</div>
+        ${roleBanner}
         <div class="nav-heading">Main</div>
         <nav class="nav" aria-label="Main">${links.slice(0, 4)
           .map(([h, label, icon]) => `<a href="#/${h}" data-nav="${h}">${ICONS[icon]}<span>${label}</span></a>`)
@@ -400,7 +438,8 @@
         <nav class="nav" aria-label="System">${links.slice(8)
           .map(([h, label, icon]) => `<a href="#/${h}" data-nav="${h}">${ICONS[icon]}<span>${label}</span></a>`)
           .join("")}</nav>
-        <div class="userbox"><strong>${esc(u.name)}</strong><span class="role">${u.role === "admin" ? "Administrator" : "Staff"}</span>
+        <div class="userbox"><strong>${esc(u.name)}</strong>
+          <span class="role" style="font-weight:600;color:${isAdmin ? "#fca5a5" : "#93c5fd"}">${isAdmin ? "🛡️ Administrator" : "💊 Pharmacy Staff"}</span>
           <button type="button" data-action="logout">Sign out</button></div>
       </aside><main id="view" tabindex="-1"></main></div>`;
   }

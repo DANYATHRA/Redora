@@ -159,40 +159,84 @@ button, input, select, textarea { font: inherit; color: inherit; }
   margin: 0 0 22px;
 }
 .quick-role-selector {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 18px;
 }
-.role-chip {
-  flex: 1;
+.role-card-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 2px solid var(--line);
+  background: #fff;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.18s ease-in-out;
+  text-align: left;
+}
+.role-card-btn:hover {
+  border-color: #fca5a5;
+  background: #fff5f5;
+  transform: translateY(-2px);
+}
+.role-card-btn.active {
+  border-color: var(--brand);
+  background: #fef2f2;
+  box-shadow: 0 4px 14px rgba(220, 38, 38, 0.12);
+}
+.role-card-btn .rc-top {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1.5px solid var(--line);
-  background: #fff;
+  justify-content: space-between;
+  width: 100%;
+}
+.role-card-btn .rc-icon {
+  font-size: 1.3rem;
+}
+.role-card-btn .rc-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+}
+.role-card-btn.active .rc-badge {
+  background: #fee2e2;
+  color: #991b1b;
+}
+.role-card-btn .rc-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #0f172a;
+  margin-top: 4px;
+}
+.role-card-btn.active .rc-title {
+  color: var(--brand-deep);
+}
+.role-card-btn .rc-desc {
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+.role-scope-callout {
+  padding: 10px 14px;
   border-radius: 10px;
-  cursor: pointer;
-  font-size: 0.86rem;
-  font-weight: 600;
-  transition: all 0.15s;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  font-size: 0.83rem;
   color: #334155;
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
-.role-chip:hover {
-  border-color: #f87171;
-  background: var(--brand-soft);
-  color: var(--brand);
-}
-.role-chip.active {
-  border-color: var(--brand);
-  background: var(--brand-soft);
-  color: var(--brand-dark);
-}
-.role-chip svg {
-  width: 18px;
-  height: 18px;
-  flex: none;
+.role-scope-callout strong {
+  color: #0f172a;
 }
 
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.35rem; letter-spacing: -.02em; }
